@@ -19,5 +19,6 @@ set_target_properties(
 add_executable(pipebench main.cpp)
 target_link_libraries(pipebench PRIVATE spdlog::spdlog)
 target_link_libraries(pipebench PRIVATE pipeline_lib)
+target_link_libraries(pipebench PRIVATE benchmark::benchmark)
 
 install(TARGETS pipebench DESTINATION bin)

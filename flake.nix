@@ -29,6 +29,7 @@
                 spdlog
                 argparse
                 openimageio
+                gbenchmark
                 # Python environment.
                 python3
                 uv

@@ -23,6 +23,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 # Dependencies.
 find_package(spdlog REQUIRED)
 find_package(Halide REQUIRED)
+find_package(benchmark REQUIRED)
 
 # Build targets.
 set(BUILD_TARGET
