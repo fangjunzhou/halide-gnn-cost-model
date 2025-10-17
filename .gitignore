@@ -1,5 +1,7 @@
 # Misc
 .direnv/
+.cache/clangd/index
 
 # Artifacts
 build/
+resources
