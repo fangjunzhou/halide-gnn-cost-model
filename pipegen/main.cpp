@@ -31,6 +31,8 @@ int main(int argc, char *argv[]) {
   std::vector<Halide::Target> targets = {Halide::get_host_target()};
   p.halidePipeline.compile_to_multitarget_static_library(
       "pipelines/example/pipeline", {}, targets);
+  p.halidePipeline.compile_to_lowered_stmt("pipelines/example/lowered.html", {},
+                                           Halide::HTML);
 
   return 0;
 }
