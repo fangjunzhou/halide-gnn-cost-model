@@ -3,20 +3,34 @@
 
 #include <vector>
 
+#include "pipegen.h"
+
 int main(int argc, char *argv[]) {
-  Halide::Var x("x"), y("y");
-  Halide::Func f("f"), g("g"), h("h");
+  spdlog::info("Generating Halide pipeline");
 
-  f(x, y) = x + y;
-  g(x, y) = f(x, y) * 2;
-  h(x, y) = g(x, y);
-  h(x, y) += f(x, y);
+  Pipeline p = generatePipeline({.numArgs = 2, .maxFuncs = 16});
 
-  Halide::Pipeline p(h);
-  auto targets = std::vector<Halide::Target>{Halide::get_host_target()};
-  p.compile_to_multitarget_static_library("pipelines/example/pipeline", {},
-                                          targets);
-  p.compile_to_lowered_stmt("pipelines/example/lowered.html", {}, Halide::HTML);
+  spdlog::info("Pipeline dag:");
+
+  for (const auto &entry : p.dag) {
+    spdlog::info("Function {} calls:", entry.first);
+    for (const auto &dep : entry.second) {
+      spdlog::info("  - {}", dep);
+    }
+  }
+
+  for (auto &func : p.funcs) {
+    spdlog::info("Scheduling {} at root", func.name());
+    func.compute_root();
+  }
+
+  spdlog::info("Pipeline loop nest:");
+  p.output.print_loop_nest();
+
+  spdlog::info("Compiling the pipeline.");
+  std::vector<Halide::Target> targets = {Halide::get_host_target()};
+  p.halidePipeline.compile_to_multitarget_static_library(
+      "pipelines/example/pipeline", {}, targets);
 
   return 0;
 }
