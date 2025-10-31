@@ -24,10 +24,15 @@ Pipeline::Pipeline(Halide::Func output) {
     funcs.push_back(f);
     // Get the dependencies of the function.
     auto dependencies = Halide::Internal::find_direct_calls(f.function());
-    dag[f.name()] = {};
+    parents[f.name()] = {};
     for (const auto &dep : dependencies) {
-      stack.push_back(Halide::Func(dep.second));
-      dag[f.name()].push_back(dep.first);
+      Halide::Func depFunc(dep.second);
+      stack.push_back(depFunc);
+      parents[f.name()].push_back(depFunc);
+      if (children.find(dep.first) == children.end()) {
+        children[dep.first] = {};
+      }
+      children[dep.first].push_back(f);
     }
   }
   halidePipeline = Halide::Pipeline(output);

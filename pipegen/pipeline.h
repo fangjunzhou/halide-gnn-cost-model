@@ -31,9 +31,15 @@ class Pipeline {
   std::vector<Halide::Func> funcs;
 
   /**
-   * @brief A DAG representation of the pipeline.
+   * @brief A mapping from function names to their parent(dependency) function
+   * names.
    */
-  std::unordered_map<std::string, std::vector<std::string>> dag;
+  std::unordered_map<std::string, std::vector<Halide::Func>> parents;
+
+  /**
+   * @brief A mapping from function names to their child(caller) function names.
+   */
+  std::unordered_map<std::string, std::vector<Halide::Func>> children;
 
   /**
    * @brief The underlying Halide pipeline.
