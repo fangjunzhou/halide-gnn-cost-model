@@ -14,6 +14,10 @@
 class Pipeline {
  public:
   Pipeline(Halide::Func output);
+
+  // Copy constructor
+  Pipeline(const Pipeline &other);
+
   ~Pipeline();
 
   /**

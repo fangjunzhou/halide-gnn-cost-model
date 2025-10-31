@@ -33,4 +33,13 @@ Pipeline::Pipeline(Halide::Func output) {
   halidePipeline = Halide::Pipeline(output);
 }
 
+Pipeline::Pipeline(const Pipeline &other) {
+  // Deep copy the output function.
+  Halide::Func copiedOutput("output");
+  std::map<Halide::Internal::FunctionPtr, Halide::Internal::FunctionPtr> copies;
+  other.output.function().deep_copy(copiedOutput.function().get_contents(),
+                                    copies);
+  *this = Pipeline(copiedOutput);
+}
+
 Pipeline::~Pipeline() {}
