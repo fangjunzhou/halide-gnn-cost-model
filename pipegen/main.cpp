@@ -32,7 +32,13 @@ int main(int argc, char *argv[]) {
   spdlog::info("Generating Halide pipeline");
 
   PipegenState state{.rng = std::mt19937(42)};
-  Pipeline p = generatePipeline({.numArgs = 2, .maxFuncs = 8}, state);
+  Pipeline p;
+  try {
+    p = generatePipeline({.numArgs = 2, .maxFuncs = 16}, state);
+  } catch (Halide::CompileError &e) {
+    spdlog::error("Failed to generate pipeline: {}", e.what());
+    return -1;
+  }
 
   spdlog::info("Pipeline dag:");
 
@@ -44,15 +50,20 @@ int main(int argc, char *argv[]) {
   }
 
   // Schedule the pipeline.
-  schedulePipeline({}, p, state);
-
-  for (auto &func : p.funcs) {
-    spdlog::info("Scheduling {} at root", func.name());
-    func.compute_root();
+  try {
+    schedulePipeline({}, p, state);
+  } catch (Halide::CompileError &e) {
+    spdlog::error("Failed to schedule pipeline: {}", e.what());
+    return -1;
   }
 
-  spdlog::info("Pipeline loop nest:");
-  p.output.print_loop_nest();
+  try {
+    spdlog::info("Pipeline loop nest:");
+    p.output.print_loop_nest();
+  } catch (Halide::CompileError &e) {
+    spdlog::error("Failed to compile loop nest: {}", e.what());
+    return -1;
+  }
 
   spdlog::info("Compiling the pipeline.");
   std::vector<Halide::Target> targets = {Halide::get_host_target()};

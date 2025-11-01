@@ -16,8 +16,12 @@ struct PipegenConfig {
 };
 
 struct ScheduleConfig {
-  // Probity of splitting an argument.
+  // Probability of splitting an argument.
   float splitChance = 0.3f;
+  // Probability of computing a function at root.
+  float computeAtRootChance = 0.2f;
+  // Probability of storing a function at root (if not compute at root).
+  float storeAtRootChance = 0.5f;
 };
 
 /**

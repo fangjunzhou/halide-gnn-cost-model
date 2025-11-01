@@ -13,6 +13,8 @@
 #include <vector>
 class Pipeline {
  public:
+  Pipeline() = default;
+
   Pipeline(Halide::Func output);
 
   // Copy constructor
@@ -26,7 +28,7 @@ class Pipeline {
   Halide::Func output;
 
   /**
-   * @brief A of functions in the pipeline.
+   * @brief A topologically sorted list of functions in the pipeline.
    */
   std::vector<Halide::Func> funcs;
 
@@ -47,4 +49,5 @@ class Pipeline {
   Halide::Pipeline halidePipeline;
 
  private:
+  void topologicalSort();
 };

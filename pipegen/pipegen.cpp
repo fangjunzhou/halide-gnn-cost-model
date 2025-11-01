@@ -2,6 +2,7 @@
 #include <spdlog/spdlog.h>
 
 #include <random>
+#include <unordered_map>
 #include <vector>
 
 #include "pipegen.h"
@@ -74,9 +75,8 @@ Pipeline generatePipeline(const PipegenConfig &config, PipegenState &state) {
   return p;
 }
 
-std::vector<Halide::Var> splitArgs(Halide::Func &func, float splitProb,
+std::vector<Halide::Var> splitFunc(Halide::Func &func, float splitProb,
                                    std::mt19937 &rng) {
-  spdlog::debug("Splitting args for function {}", func.name());
   std::vector<Halide::Var> newArgs;
   for (auto arg : func.args()) {
     std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
@@ -89,8 +89,8 @@ std::vector<Halide::Var> splitArgs(Halide::Func &func, float splitProb,
       func.split(arg, outer, inner, factor);
       newArgs.push_back(outer);
       newArgs.push_back(inner);
-      spdlog::debug("  - Split arg {} into {} and {} with factor {}",
-                    arg.name(), outer.name(), inner.name(), factor);
+      spdlog::debug("Split arg {} into {} and {} with factor {}", arg.name(),
+                    outer.name(), inner.name(), factor);
     } else {
       newArgs.push_back(arg);
     }
@@ -100,7 +100,61 @@ std::vector<Halide::Var> splitArgs(Halide::Func &func, float splitProb,
 
 void schedulePipeline(const ScheduleConfig &config, Pipeline &pipeline,
                       PipegenState &state) {
+  std::unordered_map<std::string, std::vector<Halide::Var>> loopArgMap;
   for (auto &f : pipeline.funcs) {
-    splitArgs(f, config.splitChance, state.rng);
+    spdlog::debug("- Scheduling function {}", f.name());
+
+    /* ----------------- Cross-Stage Scheduling ----------------- */
+
+    auto &children = pipeline.children[f.name()];
+    // Schedule at root.
+    std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
+    if (probDist(state.rng) < config.computeAtRootChance ||
+        children.size() != 1) {
+      f.compute_root();
+      spdlog::debug("Scheduled function {} compute at root", f.name());
+    } else {
+      auto &child = children[0];
+      auto &loopArgs = loopArgMap[child.name()];
+      std::string loopArgNames;
+      for (auto &arg : loopArgs) {
+        loopArgNames += arg.name() + " ";
+      }
+      spdlog::debug("Function {} has child {} with loop args {}", f.name(),
+                    child.name(), loopArgNames);
+      // Randomly pick a compute level.
+      std::uniform_int_distribution<int> levelDist(0, loopArgs.size() - 1);
+      int level = levelDist(state.rng);
+      f.compute_at(child, loopArgs[level]);
+      spdlog::debug("Scheduled function {} compute at {} - {}", f.name(),
+                    child.name(), loopArgs[level].name());
+      std::uniform_real_distribution<float> storeProbDist(0.0f, 1.0f);
+      // Randomly pick a storage level.
+      std::uniform_int_distribution<int> storeLevelDist(level,
+                                                        loopArgs.size() - 1);
+      int storeLevel = storeLevelDist(state.rng);
+      f.store_at(child, loopArgs[storeLevel]);
+      spdlog::debug("Scheduled function {} store at {} - {}", f.name(),
+                    child.name(), loopArgs[storeLevel].name());
+    }
+
+    /* ----------------- Intra-Stage Scheduling ----------------- */
+
+    // Randomly split args.
+    auto args = splitFunc(f, config.splitChance, state.rng);
+    // Shuffle the args for reordering.
+    std::shuffle(args.begin(), args.end(), state.rng);
+    std::vector<Halide::VarOrRVar> varArgs;
+    for (auto &arg : args) {
+      varArgs.push_back(arg);
+    }
+    f.reorder(varArgs);
+    std::string argNames;
+    for (auto &arg : args) {
+      argNames += arg.name() + " ";
+    }
+    spdlog::debug("Reordered function {} args to {}", f.name(), argNames);
+
+    loopArgMap[f.name()] = args;
   }
 }
