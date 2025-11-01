@@ -2,15 +2,16 @@
 
 #include <Halide.h>
 
+#include <string>
+#include <unordered_map>
+#include <vector>
+
 /**
  * @class Pipeline
  * @brief A custom wrapper over Halide::Pipeline for DAG management. The current
  * implementation only supports single output pipelines.
  *
  */
-#include <string>
-#include <unordered_map>
-#include <vector>
 class Pipeline {
  public:
   Pipeline() = default;

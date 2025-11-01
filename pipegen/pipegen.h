@@ -13,6 +13,8 @@ struct PipegenConfig {
   int numArgs = 2;
   // Maximum number of functions in the pipeline
   int maxFuncs = 8;
+  // Name of the output function
+  std::string outputFuncName = "output";
 };
 
 struct ScheduleConfig {

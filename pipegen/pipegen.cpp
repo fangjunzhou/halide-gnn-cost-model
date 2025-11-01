@@ -62,7 +62,7 @@ Pipeline generatePipeline(const PipegenConfig &config, PipegenState &state) {
   for (int i = 1; i < config.maxFuncs; i++) {
     std::string funcName;
     if (i == config.maxFuncs - 1) {
-      funcName = "output";
+      funcName = config.outputFuncName;
     } else {
       funcName = "f" + std::to_string(i);
     }
@@ -145,14 +145,12 @@ void schedulePipeline(const ScheduleConfig &config, Pipeline &pipeline,
     // Shuffle the args for reordering.
     std::shuffle(args.begin(), args.end(), state.rng);
     std::vector<Halide::VarOrRVar> varArgs;
-    for (auto &arg : args) {
-      varArgs.push_back(arg);
-    }
-    f.reorder(varArgs);
     std::string argNames;
     for (auto &arg : args) {
+      varArgs.push_back(arg);
       argNames += arg.name() + " ";
     }
+    f.reorder(varArgs);
     spdlog::debug("Reordered function {} args to {}", f.name(), argNames);
 
     loopArgMap[f.name()] = args;
