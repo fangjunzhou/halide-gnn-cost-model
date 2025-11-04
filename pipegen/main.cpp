@@ -33,8 +33,6 @@ int main(int argc, char *argv[]) {
   }
   spdlog::set_level(logLevel);
 
-  spdlog::info("Generating Halide pipeline");
-
   // Parse command-line arguments. Allow the user to control how many
   // schedules/pipelines to generate via -n / --num-schedules (default: 4).
   argparse::ArgumentParser program("pipegen");
@@ -57,7 +55,7 @@ int main(int argc, char *argv[]) {
   PipegenState state{.rng = std::mt19937(42)};
 
   for (int i = 0; i < numSchedules; i++) {
-    spdlog::info("Generating schedule {}", i);
+    spdlog::info("Generating pipeline {}", i);
     std::string outputFuncName = "output" + std::to_string(i);
     Pipeline p;
     try {
