@@ -95,6 +95,7 @@ int main(int argc, char *argv[]) {
       return -1;
     }
     // TODO: Save pipeline functions to AST json here.
+    // TODO: Save function dag json here.
   }
 
   return 0;
