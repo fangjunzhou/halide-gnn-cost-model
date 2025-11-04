@@ -5,6 +5,7 @@
 #include <argparse/argparse.hpp>
 #include <filesystem>
 
+#include "astvisitor.h"
 #include "pipegen.h"
 
 int main(int argc, char *argv[]) {
@@ -93,6 +94,7 @@ int main(int argc, char *argv[]) {
       spdlog::error("Failed to compile loop nest: {}", e.what());
       return -1;
     }
+    // TODO: Save pipeline functions to AST json here.
   }
 
   return 0;
