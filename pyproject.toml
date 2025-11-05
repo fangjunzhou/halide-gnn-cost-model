@@ -15,4 +15,10 @@ dependencies = [
 [dependency-groups]
 dev = [
     "black>=25.9.0",
+    "halide-gnn-cost-model",
+    "jupyterlab>=4.4.10",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"

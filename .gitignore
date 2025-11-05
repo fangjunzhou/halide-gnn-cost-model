@@ -1,6 +1,7 @@
 # Misc
 .direnv/
 .cache/clangd/index
+__pycache__
 
 # Artifacts
 build/
