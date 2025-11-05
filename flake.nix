@@ -30,6 +30,7 @@
                 argparse
                 openimageio
                 gbenchmark
+                nlohmann_json
                 # Python environment.
                 python3
                 uv

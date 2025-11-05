@@ -2,6 +2,7 @@
 
 #include <Halide.h>
 
+#include <nlohmann/json.hpp>
 #include <string>
 #include <unordered_map>
 #include <vector>
@@ -48,6 +49,18 @@ class Pipeline {
    * @brief The underlying Halide pipeline.
    */
   Halide::Pipeline halidePipeline;
+
+  /**
+   * @brief Serialize the pipeline DAG into a json object.
+   */
+  nlohmann::json serializeDAG();
+
+  /**
+   * @brief Serialize the AST for each function into a json object.
+   */
+  nlohmann::json serializeAST();
+
+  // TODO: Add scheudle serialization.
 
  private:
   void topologicalSort();

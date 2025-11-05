@@ -52,6 +52,18 @@ Pipeline::Pipeline(const Pipeline &other) {
 
 Pipeline::~Pipeline() {}
 
+nlohmann::json Pipeline::serializeDAG() {
+  nlohmann::json j;
+  // TODO: Implement DAG serialization.
+  return j;
+}
+
+nlohmann::json Pipeline::serializeAST() {
+  nlohmann::json j;
+  // TODO: Implement AST serialization.
+  return j;
+}
+
 void Pipeline::topologicalSort() {
   std::unordered_map<std::string, int> inDegree;
   for (const auto &entry : children) {

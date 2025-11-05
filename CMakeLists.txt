@@ -24,6 +24,7 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 find_package(spdlog REQUIRED)
 find_package(Halide REQUIRED)
 find_package(benchmark REQUIRED)
+find_package(nlohmann_json REQUIRED)
 
 # Build targets.
 set(BUILD_TARGET

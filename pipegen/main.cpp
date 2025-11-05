@@ -4,8 +4,8 @@
 
 #include <argparse/argparse.hpp>
 #include <filesystem>
+#include <fstream>
 
-#include "astvisitor.h"
 #include "pipegen.h"
 
 int main(int argc, char *argv[]) {
@@ -94,8 +94,20 @@ int main(int argc, char *argv[]) {
       spdlog::error("Failed to compile loop nest: {}", e.what());
       return -1;
     }
-    // TODO: Save pipeline functions to AST json here.
-    // TODO: Save function dag json here.
+    // Save function dag json here.
+    auto dagJson = p.serializeDAG();
+    std::string dagJsonPath =
+        "pipelines/pipeline_" + std::to_string(i) + "/dag.json";
+    std::ofstream dagJsonFile(dagJsonPath);
+    dagJsonFile << dagJson.dump(4);
+    dagJsonFile.close();
+    // Save pipeline functions to AST json here.
+    auto astJson = p.serializeAST();
+    std::string astJsonPath =
+        "pipelines/pipeline_" + std::to_string(i) + "/ast.json";
+    std::ofstream astJsonFile(astJsonPath);
+    astJsonFile << astJson.dump(4);
+    astJsonFile.close();
   }
 
   return 0;
