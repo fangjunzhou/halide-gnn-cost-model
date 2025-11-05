@@ -53,8 +53,16 @@ Pipeline::Pipeline(const Pipeline &other) {
 Pipeline::~Pipeline() {}
 
 nlohmann::json Pipeline::serializeDAG() {
-  nlohmann::json j;
-  // TODO: Implement DAG serialization.
+  nlohmann::json j = nlohmann::json::array();
+  for (auto &func : this->funcs) {
+    nlohmann::json funcJson;
+    funcJson["name"] = func.name();
+    funcJson["parents"] = nlohmann::json::array();
+    for (auto &parent : this->parents[func.name()]) {
+      funcJson["parents"].push_back(parent.name());
+    }
+    j.push_back(funcJson);
+  }
   return j;
 }
 
