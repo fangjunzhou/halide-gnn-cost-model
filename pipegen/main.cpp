@@ -113,6 +113,12 @@ int main(int argc, char *argv[]) {
   std::ofstream astJsonFile(astJsonPath);
   astJsonFile << astJson.dump(4);
   astJsonFile.close();
+  // TODO: Save schedule json here.
+  auto scheduleJson = p.serializeSchedule();
+  std::string scheduleJsonPath = outputDir + "/schedule.json";
+  std::ofstream scheduleJsonFile(scheduleJsonPath);
+  scheduleJsonFile << scheduleJson.dump(4);
+  scheduleJsonFile.close();
 
   return 0;
 }
