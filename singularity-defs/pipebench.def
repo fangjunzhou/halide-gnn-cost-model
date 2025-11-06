@@ -12,5 +12,4 @@ From: debian:latest
 
 %runscript
     cd /workspace
-    python3 scripts/run_pipegen.py
-    
+    python3 scripts/main.py "$*"

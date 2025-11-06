@@ -1,8 +1,7 @@
 #include <Halide.h>
 
-#include "pipeline.h"
-
 #include "astvisitor.h"
+#include "pipeline.h"
 
 Pipeline::Pipeline(Halide::Func output) {
   this->output = output;
@@ -69,7 +68,8 @@ nlohmann::json Pipeline::serializeDAG() {
 }
 
 nlohmann::json Pipeline::serializeAST() {
-  // Return an array of functions with their name and the AST we collected during generation.
+  // Return an array of functions with their name and the AST we collected
+  // during generation.
   nlohmann::json root = nlohmann::json::array();
   for (auto &func : this->funcs) {
     nlohmann::json f;
@@ -83,6 +83,11 @@ nlohmann::json Pipeline::serializeAST() {
     root.push_back(f);
   }
   return root;
+}
+
+nlohmann::json Pipeline::serializeSchedule() {
+  nlohmann::json j;
+  return j;
 }
 
 void Pipeline::topologicalSort() {

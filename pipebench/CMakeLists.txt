@@ -1,4 +1,9 @@
-set(PIPES_DIR "${CMAKE_SOURCE_DIR}/pipelines")
+if(NOT DEFINED PIPES_DIR)
+  # Default to the repository's pipelines directory, but allow external
+  # callers (e.g. scripts) to override via -DPIPES_DIR=/some/path when
+  # invoking cmake.
+  set(PIPES_DIR "${CMAKE_SOURCE_DIR}/pipelines" CACHE PATH "Directory containing pipeline_* dirs")
+endif()
 
 # Find all pipeline directories named pipeline_*
 file(
@@ -52,11 +57,6 @@ foreach(pdir IN LISTS PIPELINE_DIRS)
     message(
       FATAL_ERROR "Failed to determine numeric pipeline index from ${pdir}")
   endif()
-
-  # Compile main.cpp with a per-target define so the same source can be compiled
-  # for different pipelines (main.cpp uses PIPELINE_IDX).
-  target_compile_definitions(${PIPEBENCH_EXEC}
-                             PRIVATE PIPELINE_IDX=${PIPE_IDX_MATCH})
 
   install(TARGETS ${PIPEBENCH_EXEC} DESTINATION bin)
 endforeach()
