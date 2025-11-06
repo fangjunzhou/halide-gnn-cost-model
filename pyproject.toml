@@ -4,9 +4,21 @@ version = "0.1.0"
 description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
-dependencies = []
+dependencies = [
+    "matplotlib>=3.10.7",
+    "networkx>=3.5",
+    "torch>=2.9.0",
+    "torch-geometric>=2.7.0",
+    "torchvision>=0.24.0",
+]
 
 [dependency-groups]
 dev = [
     "black>=25.9.0",
+    "halide-gnn-cost-model",
+    "jupyterlab>=4.4.10",
 ]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
