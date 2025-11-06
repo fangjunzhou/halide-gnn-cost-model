@@ -1,5 +1,0 @@
-[ 25%] Building CXX object pipegen/CMakeFiles/pipegen.dir/main.cpp.o
-[ 50%] Building CXX object pipegen/CMakeFiles/pipegen.dir/pipegen.cpp.o
-[ 75%] Building CXX object pipegen/CMakeFiles/pipegen.dir/pipeline.cpp.o
-[100%] Linking CXX executable ../bin/pipegen
-[100%] Built target pipegen

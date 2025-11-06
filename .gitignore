@@ -2,6 +2,7 @@
 .direnv/
 .cache/clangd/index
 __pycache__
+*.log
 
 # Artifacts
 build/
