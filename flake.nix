@@ -28,7 +28,6 @@
                 halide
                 spdlog
                 argparse
-                openimageio
                 gbenchmark
                 nlohmann_json
                 # Python environment.
