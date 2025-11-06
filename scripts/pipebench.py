@@ -13,27 +13,43 @@ import logging
 logger = logging.getLogger(__name__)
 
 
-def build_pipebench(pipelines_dir: Path | None = None):
+def build_pipebench(pipelines_dir: Path | None = None, build_dir: Path | None = None):
     """Build the pipebench executables using cmake.
 
     If `pipelines_dir` is provided, pass it to CMake as the PIPES_DIR cache
     variable so the CMakeLists can pick up pipeline dirs from that location.
+
+    :param build_dir: Directory to use for out-of-source build. If None,
+                      defaults to ./build relative to the repository root.
     """
     logger.info("Building pipebench executables...")
-    build_dir = Path("build")
-    build_dir.mkdir(exist_ok=True)
+    if build_dir is None:
+        build_dir = Path("build")
+    build_dir = build_dir.resolve()
+    build_dir.mkdir(parents=True, exist_ok=True)
+
+    source_dir = Path(__file__).resolve().parents[1]
 
     cmake_cmd = [
         "cmake",
-        "..",
+        "-S",
+        str(source_dir),
+        "-B",
+        str(build_dir),
         "-DCMAKE_BUILD_TYPE=Release",
         "-DBUILD_TARGET=pipebench",
     ]
     if pipelines_dir is not None:
         cmake_cmd.append(f"-DPIPES_DIR={str(pipelines_dir.resolve())}")
 
-    subprocess.run(cmake_cmd, cwd=build_dir, check=True)
-    subprocess.run(["make"], cwd=build_dir, check=True)
+    subprocess.run(cmake_cmd, check=True)
+
+    # Use cmake --build for portability and enable parallel builds.
+    parallel = os.cpu_count() or 1
+    subprocess.run(
+        ["cmake", "--build", str(build_dir), "--parallel", str(parallel)],
+        check=True,
+    )
     logger.info("Build completed.")
 
 
@@ -55,7 +71,7 @@ def run_pipebench(benchmark_path: Path, output_path: Path) -> int:
     return proc.returncode
 
 
-def benchmark_pipelines(pipelines_dir: Path) -> int:
+def benchmark_pipelines(pipelines_dir: Path, build_dir: Path | None = None) -> int:
     """Benchmark all pipelines found in `pipelines_dir`.
 
     This function builds the pipebench binaries (in `build/bin`) and then for
@@ -65,12 +81,15 @@ def benchmark_pipelines(pipelines_dir: Path) -> int:
 
     Returns 0 if all ran successfully, otherwise returns number of failures (>0).
     """
-    bin_dir = Path("build") / "bin"
+    # Default to ./build if not provided.
+    if build_dir is None:
+        build_dir = Path("build")
+    bin_dir = Path(build_dir) / "bin"
+    # Build the pipebench executables (this will create build_dir if needed)
+    build_pipebench(pipelines_dir, build_dir)
+
     if not bin_dir.exists():
         raise FileNotFoundError(f"Binary directory not found: {bin_dir}")
-
-    # Build the pipebench executables
-    build_pipebench(pipelines_dir)
 
     failures = 0
 

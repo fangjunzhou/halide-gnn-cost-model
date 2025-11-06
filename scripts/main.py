@@ -38,6 +38,12 @@ def main():
         help="Directory containing pipeline definitions.",
     )
     parser.add_argument(
+        "--build-dir",
+        type=Path,
+        default=Path("build"),
+        help="Out-of-source build directory to use for CMake (default: ./build).",
+    )
+    parser.add_argument(
         "--verbose", "-v", action="store_true", help="Enable debug logging"
     )
 
@@ -50,6 +56,7 @@ def main():
     pipeline_id: int = args.pipeline_id
     num_schedules: int = args.num_schedules
     pipelines_dir: Path = args.pipelines_dir
+    build_dir: Path = args.build_dir
 
     logger.info(
         "Generating pipeline %s with %s schedules into %s",
@@ -58,14 +65,14 @@ def main():
         pipelines_dir,
     )
     try:
-        pipegen.generate_pipelines(pipeline_id, num_schedules, pipelines_dir)
+        pipegen.generate_pipelines(pipeline_id, num_schedules, pipelines_dir, build_dir)
     except Exception:
         logger.exception("Failed to generate pipelines")
         sys.exit(1)
 
     logger.info("Benchmarking generated pipelines in %s", pipelines_dir)
     try:
-        failures = pipebench.benchmark_pipelines(pipelines_dir)
+        failures = pipebench.benchmark_pipelines(pipelines_dir, build_dir)
     except Exception:
         logger.exception("Failed to run benchmarks")
         sys.exit(1)
