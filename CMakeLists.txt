@@ -42,3 +42,7 @@ elseif(BUILD_TARGET STREQUAL "pipegen")
 else()
   message(FATAL_ERROR "Unknown BUILD_TARGET: ${BUILD_TARGET}")
 endif()
+
+# Add vendored argparse header to include path
+include_directories(${CMAKE_SOURCE_DIR}/third_party/argparse/include)
+

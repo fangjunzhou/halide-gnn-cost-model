@@ -6,6 +6,8 @@
 #include <vector>
 
 #include "pipegen.h"
+#include "astvisitor.h"           
+#include <nlohmann/json.hpp>
 
 Halide::Expr generateExpr(const std::vector<Halide::Var> &vars,
                           const std::vector<Halide::Func> &funcs, int depth,
@@ -54,10 +56,22 @@ Pipeline generatePipeline(const PipegenConfig &config, PipegenState &state) {
 
   // Function pool.
   std::vector<Halide::Func> funcs;
+  // Map to collect per-function ASTs while generating
+  std::unordered_map<std::string, nlohmann::json> ast_map;
+
   // Create the initial function.
-  Halide::Func f("f0");
-  f(vars) = generateExpr(vars, funcs, 1, state.rng);
-  funcs.push_back(f);
+  {
+    Halide::Func f("f0");
+    Halide::Expr expr = generateExpr(vars, funcs, 1, state.rng);
+    f(vars) = expr;
+    funcs.push_back(f);
+
+    // Build JSON AST for this function and store.
+    JSONASTVisitor jv;
+    nlohmann::json ast = jv.ast_for(expr);
+    ast_map[f.name()] = ast;
+  }
+
   // Create the rest of the pipeline.
   for (int i = 1; i < config.maxFuncs; i++) {
     std::string funcName;
@@ -67,11 +81,20 @@ Pipeline generatePipeline(const PipegenConfig &config, PipegenState &state) {
       funcName = "f" + std::to_string(i);
     }
     Halide::Func fi(funcName);
-    fi(vars) = generateExpr(vars, funcs, 1, state.rng);
+    Halide::Expr expr = generateExpr(vars, funcs, 1, state.rng);
+    fi(vars) = expr;
     funcs.push_back(fi);
+
+    // Build JSON AST for this function and store.
+    JSONASTVisitor jv;
+    nlohmann::json ast = jv.ast_for(expr);
+    ast_map[fi.name()] = ast;
   }
   // The output function is the last function created.
+
   Pipeline p(funcs.back());
+  // Attach the collected ASTs to the Pipeline so serializeAST can simply return them.
+  p.func_asts = std::move(ast_map);
   return p;
 }
 

@@ -60,7 +60,14 @@ class Pipeline {
    */
   nlohmann::json serializeAST();
 
+  /**
+   * @brief Store per-function JSON ASTs created at generation time.
+   * Key: function name -> value: JSON AST for that function (or null)
+   */
+  std::unordered_map<std::string, nlohmann::json> func_asts;
+
   // TODO: Add scheudle serialization.
+
 
  private:
   void topologicalSort();
