@@ -2,6 +2,8 @@
 
 #include "pipeline.h"
 
+#include "astvisitor.h"
+
 Pipeline::Pipeline(Halide::Func output) {
   this->output = output;
   // DFS the output function to find all functions in the DAG.
@@ -67,9 +69,20 @@ nlohmann::json Pipeline::serializeDAG() {
 }
 
 nlohmann::json Pipeline::serializeAST() {
-  nlohmann::json j;
-  // TODO: Implement AST serialization.
-  return j;
+  // Return an array of functions with their name and the AST we collected during generation.
+  nlohmann::json root = nlohmann::json::array();
+  for (auto &func : this->funcs) {
+    nlohmann::json f;
+    f["name"] = func.name();
+    auto it = func_asts.find(func.name());
+    if (it != func_asts.end()) {
+      f["ast"] = it->second;
+    } else {
+      f["ast"] = nullptr;
+    }
+    root.push_back(f);
+  }
+  return root;
 }
 
 void Pipeline::topologicalSort() {

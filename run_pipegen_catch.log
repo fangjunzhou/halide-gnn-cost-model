@@ -1,0 +1,68 @@
+[2025-10-24 11:23:10.037] [info] Generating Halide pipeline
+[2025-10-24 11:23:10.043] [info] Pipeline dag:
+[2025-10-24 11:23:10.043] [info] Function f1$0 calls:
+[2025-10-24 11:23:10.043] [info] Function f2$0 calls:
+[2025-10-24 11:23:10.043] [info]   - f0$0
+[2025-10-24 11:23:10.043] [info] Function f0$0 calls:
+[2025-10-24 11:23:10.043] [info] Function output calls:
+[2025-10-24 11:23:10.043] [info]   - f4$0
+[2025-10-24 11:23:10.043] [info]   - f6$0
+[2025-10-24 11:23:10.043] [info] Function f5$0 calls:
+[2025-10-24 11:23:10.043] [info]   - f3$0
+[2025-10-24 11:23:10.043] [info] Function f4$0 calls:
+[2025-10-24 11:23:10.043] [info]   - f1$0
+[2025-10-24 11:23:10.043] [info]   - f2$0
+[2025-10-24 11:23:10.043] [info] Function f3$0 calls:
+[2025-10-24 11:23:10.043] [info]   - f0$0
+[2025-10-24 11:23:10.043] [info] Function f6$0 calls:
+[2025-10-24 11:23:10.043] [info]   - f5$0
+[2025-10-24 11:23:10.043] [info] Scheduling output at root
+[2025-10-24 11:23:10.043] [info] Scheduling f6$0 at root
+[2025-10-24 11:23:10.043] [info] Scheduling f5$0 at root
+[2025-10-24 11:23:10.043] [info] Scheduling f3$0 at root
+[2025-10-24 11:23:10.043] [info] Scheduling f0$0 at root
+[2025-10-24 11:23:10.043] [info] Scheduling f4$0 at root
+[2025-10-24 11:23:10.043] [info] Scheduling f2$0 at root
+[2025-10-24 11:23:10.043] [info] Scheduling f1$0 at root
+[2025-10-24 11:23:10.043] [info] Pipeline loop nest:
+produce f0:
+  for v1:
+    for v0:
+      f0(...) = ...
+consume f0:
+  produce f2:
+    for v1:
+      for v0:
+        f2(...) = ...
+  consume f2:
+    produce f1:
+      for v1:
+        for v0:
+          f1(...) = ...
+    consume f1:
+      produce f4:
+        for v1:
+          for v0:
+            f4(...) = ...
+      consume f4:
+        produce f3:
+          for v1:
+            for v0:
+              f3(...) = ...
+        consume f3:
+          produce f5:
+            for v1:
+              for v0:
+                f5(...) = ...
+          consume f5:
+            produce f6:
+              for v1:
+                for v0:
+                  f6(...) = ...
+            consume f6:
+              produce output:
+                for v1:
+                  for v0:
+                    output(...) = ...
+[2025-10-24 11:23:10.050] [info] Compiling the pipeline.
+[2025-10-24 11:23:11.281] [info] Writing textual lowered AST to pipelines/example/lowered.txt
