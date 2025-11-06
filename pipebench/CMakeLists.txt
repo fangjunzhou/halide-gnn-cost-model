@@ -1,8 +1,9 @@
 if(NOT DEFINED PIPES_DIR)
-  # Default to the repository's pipelines directory, but allow external
-  # callers (e.g. scripts) to override via -DPIPES_DIR=/some/path when
-  # invoking cmake.
-  set(PIPES_DIR "${CMAKE_SOURCE_DIR}/pipelines" CACHE PATH "Directory containing pipeline_* dirs")
+  # Default to the repository's pipelines directory, but allow external callers
+  # (e.g. scripts) to override via -DPIPES_DIR=/some/path when invoking cmake.
+  set(PIPES_DIR
+      "${CMAKE_SOURCE_DIR}/pipelines"
+      CACHE PATH "Directory containing pipeline_* dirs")
 endif()
 
 # Find all pipeline directories named pipeline_*
@@ -44,6 +45,7 @@ foreach(pdir IN LISTS PIPELINE_DIRS)
   # Add executable specific to this pipeline.
   set(PIPEBENCH_EXEC "pipebench_${PIPE_SUFFIX}")
   add_executable(${PIPEBENCH_EXEC} main.cpp)
+  target_link_libraries(${PIPEBENCH_EXEC} PRIVATE Halide::Halide)
   target_link_libraries(${PIPEBENCH_EXEC} PRIVATE spdlog::spdlog)
   target_link_libraries(${PIPEBENCH_EXEC} PRIVATE ${PIPELINE_LIB_TARGET})
   target_link_libraries(${PIPEBENCH_EXEC} PRIVATE benchmark::benchmark)
