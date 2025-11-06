@@ -6,6 +6,5 @@ __pycache__
 
 # Artifacts
 build/
-resources
-pipelines
+resources/
 *.sif
