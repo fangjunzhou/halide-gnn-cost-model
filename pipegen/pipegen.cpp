@@ -141,12 +141,12 @@ static std::vector<Halide::VarOrRVar> reorderAndShuffleArgs(
 }
 
 // Possibly vectorize the innermost loop based on naming convention and chance.
-static void maybeVectorizeInnermost(Halide::Func &f,
+static bool maybeVectorizeInnermost(Halide::Func &f,
                                     const std::vector<Halide::Var> &args,
                                     const ScheduleConfig &config,
                                     std::mt19937 &rng) {
   if (args.size() == 0) {
-    return;
+    return false;
   }
   auto innermostArg = args[0];
   std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
@@ -156,7 +156,9 @@ static void maybeVectorizeInnermost(Halide::Func &f,
     f.vectorize(innermostArg);
     spdlog::debug("Vectorized function {} on arg {}", f.name(),
                   innermostArg.name());
+    return true;
   }
+  return false;
 }
 
 // Possibly parallelize the outermost loop based on chance.
@@ -185,7 +187,7 @@ static std::optional<std::string> scheduleCrossStage(
     const ScheduleConfig &config, Pipeline &pipeline, Halide::Func &f,
     std::unordered_map<std::string, std::vector<Halide::Var>> &loopArgMap,
     std::unordered_map<std::string, bool> &parallelizedMap,
-    PipegenState &state) {
+    std::unordered_map<std::string, bool> &vectorizedMap, PipegenState &state) {
   auto &children = pipeline.children[f.name()];
   // Schedule at root.
   std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
@@ -203,15 +205,21 @@ static std::optional<std::string> scheduleCrossStage(
     }
     spdlog::debug("Function {} has child {} with loop args {}", f.name(),
                   child.name(), loopArgNames);
-    int maxLevel;
+    int minLevel, maxLevel;
     if (parallelizedMap[child.name()]) {
       // Store below the outermost parallel loop.
       maxLevel = loopArgs.size() - 2;
     } else {
       maxLevel = loopArgs.size();
     }
+    if (vectorizedMap[child.name()]) {
+      // Compute above the innermost vectorized loop.
+      minLevel = 1;
+    } else {
+      minLevel = 0;
+    }
     // Randomly pick a compute level.
-    std::uniform_int_distribution<int> levelDist(0, maxLevel);
+    std::uniform_int_distribution<int> levelDist(minLevel, maxLevel);
     int level = levelDist(state.rng);
     if (level >= loopArgs.size()) {
       f.compute_root();
@@ -241,13 +249,14 @@ void schedulePipeline(const ScheduleConfig &config, Pipeline &pipeline,
                       PipegenState &state) {
   std::unordered_map<std::string, std::vector<Halide::Var>> loopArgMap;
   std::unordered_map<std::string, bool> parallelizedMap;
+  std::unordered_map<std::string, bool> vectorizedMap;
   for (auto &f : pipeline.funcs) {
     spdlog::debug("- Scheduling function {}", f.name());
 
     /* ----------------- Cross-Stage Scheduling ----------------- */
 
     auto parent = scheduleCrossStage(config, pipeline, f, loopArgMap,
-                                     parallelizedMap, state);
+                                     parallelizedMap, vectorizedMap, state);
 
     /* ----------------- Intra-Stage Scheduling ----------------- */
 
@@ -256,7 +265,8 @@ void schedulePipeline(const ScheduleConfig &config, Pipeline &pipeline,
     // Shuffle/reorder and apply reorder call.
     auto varArgs = reorderAndShuffleArgs(f, args, state.rng);
     // Randomly vectorize innermost loop.
-    maybeVectorizeInnermost(f, args, config, state.rng);
+    bool vectorized = maybeVectorizeInnermost(f, args, config, state.rng);
+    vectorizedMap[f.name()] = vectorized;
     // Randomly parallelize outermost loop.
     if (!parent) {
       bool parallelized = maybeParallelizeOutermost(f, args, config, state.rng);
