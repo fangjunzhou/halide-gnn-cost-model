@@ -156,6 +156,7 @@ class ScheduleJSONVisitor : public Halide::Internal::IRVisitor {
   void visit(const Halide::Internal::For *op) override {
     nlohmann::json j;
     j["type"] = "For";
+    j["for_type"] = to_string(op->for_type);
     j["var"] = simplify_var_name(op->name);
     // Bounds as strings (kept simple to avoid extra dependencies)
     Halide::Expr min_val = op->min, extent_val = op->extent;
