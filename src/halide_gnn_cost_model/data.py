@@ -4,7 +4,7 @@ PyTorch Dataset and DataLoader for pipeline DAGs.
 
 import logging
 import torch
-from torch.utils.data import Dataset, DataLoader
+from torch.utils.data import Dataset
 from pathlib import Path
 import networkx as nx
 import json
@@ -12,6 +12,27 @@ from torch_geometric.data import HeteroData
 
 
 logger = logging.getLogger(__name__)
+
+
+def load_dag(dag_path: Path) -> nx.DiGraph:
+    """Load a DAG from a JSON file.
+
+    :param dag_path: Path to the DAG JSON file.
+    :return: A NetworkX DiGraph representing the DAG.
+    """
+    with open(dag_path, "r") as f:
+        dag_data = json.load(f)
+    func_names = [func["name"] for func in dag_data]
+    dag = nx.DiGraph()
+    # Add function nodes.
+    for idx, func_name in enumerate(func_names):
+        dag.add_node(idx, name={func_name})
+    # Add edges based on dependencies.
+    for idx, func in enumerate(dag_data):
+        for dep in func["parents"]:
+            dep_idx = func_names.index(dep)
+            dag.add_edge(dep_idx, idx)
+    return dag
 
 
 def load_pipeline(pipeline_dir: Path) -> HeteroData:
@@ -26,18 +47,7 @@ def load_pipeline(pipeline_dir: Path) -> HeteroData:
 
     # Load the DAG JSON file.
     dag_path = pipeline_dir / "dag.json"
-    with open(dag_path, "r") as f:
-        dag_data = json.load(f)
-    func_names = [func["name"] for func in dag_data]
-    dag = nx.DiGraph()
-    # Add function nodes.
-    for idx, func_name in enumerate(func_names):
-        dag.add_node(idx, name={func_name})
-    # Add edges based on dependencies.
-    for idx, func in enumerate(dag_data):
-        for dep in func["parents"]:
-            dep_idx = func_names.index(dep)
-            dag.add_edge(dep_idx, idx)
+    dag = load_dag(dag_path)
     data["function"].x = torch.ones((len(dag.nodes), 1), dtype=torch.float)
     edge_index = torch.tensor(list(dag.edges)).T
     data["function", "called_by", "function"].edge_index = edge_index
