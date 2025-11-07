@@ -1,14 +1,14 @@
 #include <Halide.h>
-#include <nlohmann/json.hpp>
 
+#include <nlohmann/json.hpp>
 #include <regex>
 #include <sstream>
 #include <string>
 #include <utility>
 #include <vector>
 
-#include "pipeline.h"
 #include "astvisitor.h"  // existing AST capture path (no internal headers)
+#include "pipeline.h"
 
 // NOTE: We intentionally avoid including Halide Internal headers here to keep
 // compatibility with packaged Halide installs (e.g., Homebrew), which don't
@@ -16,7 +16,9 @@
 
 // Helper: simple trim (right)
 static inline std::string rtrim_copy(std::string s) {
-  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' || s.back() == '\r' || s.back() == '\n')) s.pop_back();
+  while (!s.empty() && (s.back() == ' ' || s.back() == '\t' ||
+                        s.back() == '\r' || s.back() == '\n'))
+    s.pop_back();
   return s;
 }
 
@@ -30,7 +32,8 @@ static inline int leading_spaces(const std::string &s) {
 // Parse Halide's print_loop_nest() text into a nested JSON.
 // Root is an array. Nodes (examples):
 // - { "type":"Produce"|"Consume"|"Store", "func":"f" , "body":[ ... ] }
-// - { "type":"For", "for_type": "...", "var":"x", "header": "full header line", "body":[ ... ] }
+// - { "type":"For", "for_type": "...", "var":"x", "header": "full header line",
+// "body":[ ... ] }
 // - { "type":"Provide", "func":"f" }  (leaf)
 // - fallback: { "type":"Line", "text":"..." }
 static nlohmann::json schedule_json_from_text(const std::string &txt) {
@@ -43,8 +46,10 @@ static nlohmann::json schedule_json_from_text(const std::string &txt) {
   stack.emplace_back(-1, &root);
 
   // Regexes for key lines
-  const std::regex re_block_directive(R"(^\s*(produce|consume|store)\s+([A-Za-z0-9_$.]+)\s*:)");
-  const std::regex re_for_header(R"(^\s*([A-Za-z]+)\s+([A-Za-z0-9_$.]+).*\:\s*$)");
+  const std::regex re_block_directive(
+      R"(^\s*(produce|consume|store)\s+([A-Za-z0-9_$.]+)\s*:)");
+  const std::regex re_for_header(
+      R"(^\s*([A-Za-z]+)\s+([A-Za-z0-9_$.]+).*\:\s*$)");
   const std::regex re_provide(R"(^\s*([A-Za-z0-9_$.]+)\s*\()");
 
   std::istringstream iss(txt);
@@ -73,9 +78,12 @@ static nlohmann::json schedule_json_from_text(const std::string &txt) {
       std::string kind = m[1];
       std::string func = m[2];
       json node;
-      if (kind == "produce") node["type"] = "Produce";
-      else if (kind == "consume") node["type"] = "Consume";
-      else node["type"] = "Store";
+      if (kind == "produce")
+        node["type"] = "Produce";
+      else if (kind == "consume")
+        node["type"] = "Consume";
+      else
+        node["type"] = "Store";
       node["func"] = func;
       node["body"] = json::array();
       parent->push_back(node);
@@ -86,14 +94,16 @@ static nlohmann::json schedule_json_from_text(const std::string &txt) {
     }
 
     if (std::regex_search(raw, m, re_for_header)) {
-      // For header line: first token is loop kind, second is var (already simplified by Halide)
+      // For header line: first token is loop kind, second is var (already
+      // simplified by Halide)
       std::string for_type = m[1];
       std::string var = m[2];
       json node;
       node["type"] = "For";
       node["for_type"] = for_type;
       node["var"] = var;
-      node["header"] = raw;  // keep full header string ("Serial x in [..] DeviceAPI:") for reference
+      node["header"] = raw;  // keep full header string ("Serial x in [..]
+                             // DeviceAPI:") for reference
       node["body"] = json::array();
       parent->push_back(node);
       json &inserted = parent->back();
@@ -123,8 +133,8 @@ static nlohmann::json schedule_json_from_text(const std::string &txt) {
 }
 
 // Capture Halide's loop-nest printout into a std::string.
-// We rely on the public Func::print_loop_nest() behavior which writes to std::cout.
-// NEW: take by value (non-const)
+// We rely on the public Func::print_loop_nest() behavior which writes to
+// std::cout. NEW: take by value (non-const)
 static std::string capture_loop_nest_text(Halide::Func f) {
   std::ostringstream oss;
   auto *old = std::cout.rdbuf(oss.rdbuf());
@@ -198,7 +208,8 @@ nlohmann::json Pipeline::serializeDAG() {
 }
 
 nlohmann::json Pipeline::serializeAST() {
-  // Return an array of functions with their name and the AST we collected during generation.
+  // Return an array of functions with their name and the AST we collected
+  // during generation.
   nlohmann::json root = nlohmann::json::array();
   for (auto &func : this->funcs) {
     nlohmann::json f;
