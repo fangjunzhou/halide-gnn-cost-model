@@ -19,11 +19,15 @@ struct PipegenConfig {
 
 struct ScheduleConfig {
   // Probability of splitting an argument.
-  float splitChance = 0.3f;
+  float splitChance = 0.5f;
   // Probability of computing a function at root.
-  float computeAtRootChance = 0.2f;
+  float computeAtRootChance = 0.5f;
   // Probability of storing a function at root (if not compute at root).
   float storeAtRootChance = 0.5f;
+  // Probability of vectorizing the innermost loop.
+  float vectorizeInnermostChance = 0.5f;
+  // Probability of parallelizing the outermost loop.
+  float parallelizeOutermostChance = 0.5f;
 };
 
 /**

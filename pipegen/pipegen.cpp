@@ -2,7 +2,9 @@
 #include <spdlog/spdlog.h>
 
 #include <nlohmann/json.hpp>
+#include <optional>
 #include <random>
+#include <string>
 #include <unordered_map>
 #include <vector>
 
@@ -99,8 +101,8 @@ Pipeline generatePipeline(const PipegenConfig &config, PipegenState &state) {
   return p;
 }
 
-std::vector<Halide::Var> splitFunc(Halide::Func &func, float splitProb,
-                                   std::mt19937 &rng) {
+static std::vector<Halide::Var> splitFunc(Halide::Func &func, float splitProb,
+                                          std::mt19937 &rng) {
   std::vector<Halide::Var> newArgs;
   for (auto arg : func.args()) {
     std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
@@ -122,60 +124,146 @@ std::vector<Halide::Var> splitFunc(Halide::Func &func, float splitProb,
   return newArgs;
 }
 
+// Shuffle/reorder args and apply the reorder to the given function.
+// Returns the VarOrRVar vector used for the reorder call.
+static std::vector<Halide::VarOrRVar> reorderAndShuffleArgs(
+    Halide::Func &f, std::vector<Halide::Var> &args, std::mt19937 &rng) {
+  std::shuffle(args.begin(), args.end(), rng);
+  std::vector<Halide::VarOrRVar> varArgs;
+  std::string argNames;
+  for (auto &arg : args) {
+    varArgs.push_back(arg);
+    argNames += arg.name() + " ";
+  }
+  f.reorder(varArgs);
+  spdlog::debug("Reordered function {} with args {}", f.name(), argNames);
+  return varArgs;
+}
+
+// Possibly vectorize the innermost loop based on naming convention and chance.
+static void maybeVectorizeInnermost(Halide::Func &f,
+                                    const std::vector<Halide::Var> &args,
+                                    const ScheduleConfig &config,
+                                    std::mt19937 &rng) {
+  if (args.size() == 0) {
+    return;
+  }
+  auto innermostArg = args[0];
+  std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
+  if (innermostArg.name().find("_in") != std::string::npos &&
+      probDist(rng) < config.vectorizeInnermostChance) {
+    // Preserve original behavior: vectorize the last arg.
+    f.vectorize(innermostArg);
+    spdlog::debug("Vectorized function {} on arg {}", f.name(),
+                  innermostArg.name());
+  }
+}
+
+// Possibly parallelize the outermost loop based on chance.
+static bool maybeParallelizeOutermost(Halide::Func &f,
+                                      const std::vector<Halide::Var> &args,
+                                      const ScheduleConfig &config,
+                                      std::mt19937 &rng) {
+  if (args.size() == 0) {
+    return false;
+  }
+  std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
+  if (probDist(rng) < config.parallelizeOutermostChance) {
+    // Preserve original behavior: parallelize the last arg.
+    f.parallel(args.back());
+    spdlog::debug("Parallelized function {} on arg {}", f.name(),
+                  args.back().name());
+    return true;
+  }
+  return false;
+}
+
+// Cross-stage scheduling: decide whether to compute at root or at a child
+// loop level and whether to store at a particular child loop level.
+// Returns true when the function was scheduled compute_root.
+static std::optional<std::string> scheduleCrossStage(
+    const ScheduleConfig &config, Pipeline &pipeline, Halide::Func &f,
+    std::unordered_map<std::string, std::vector<Halide::Var>> &loopArgMap,
+    std::unordered_map<std::string, bool> &parallelizedMap,
+    PipegenState &state) {
+  auto &children = pipeline.children[f.name()];
+  // Schedule at root.
+  std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
+  if (probDist(state.rng) < config.computeAtRootChance ||
+      children.size() != 1) {
+    f.compute_root();
+    spdlog::debug("Scheduled function {} compute at root", f.name());
+    return std::nullopt;
+  } else {
+    auto &child = children[0];
+    auto &loopArgs = loopArgMap[child.name()];
+    std::string loopArgNames;
+    for (auto &arg : loopArgs) {
+      loopArgNames += arg.name() + " ";
+    }
+    spdlog::debug("Function {} has child {} with loop args {}", f.name(),
+                  child.name(), loopArgNames);
+    int maxLevel;
+    if (parallelizedMap[child.name()]) {
+      // Store below the outermost parallel loop.
+      maxLevel = loopArgs.size() - 2;
+    } else {
+      maxLevel = loopArgs.size();
+    }
+    // Randomly pick a compute level.
+    std::uniform_int_distribution<int> levelDist(0, maxLevel);
+    int level = levelDist(state.rng);
+    if (level >= loopArgs.size()) {
+      f.compute_root();
+      spdlog::debug("Scheduled function {} compute at root", f.name());
+      return std::nullopt;
+    }
+    f.compute_at(child, loopArgs[level]);
+    spdlog::debug("Scheduled function {} compute at {} - {}", f.name(),
+                  child.name(), loopArgs[level].name());
+    std::uniform_real_distribution<float> storeProbDist(0.0f, 1.0f);
+    // Randomly pick a storage level.
+    std::uniform_int_distribution<int> storeLevelDist(level, maxLevel);
+    int storeLevel = storeLevelDist(state.rng);
+    if (storeLevel >= loopArgs.size()) {
+      f.store_root();
+      spdlog::debug("Scheduled function {} store at root", f.name());
+    } else {
+      f.store_at(child, loopArgs[storeLevel]);
+      spdlog::debug("Scheduled function {} store at {} - {}", f.name(),
+                    child.name(), loopArgs[storeLevel].name());
+    }
+    return child.name();
+  }
+}
+
 void schedulePipeline(const ScheduleConfig &config, Pipeline &pipeline,
                       PipegenState &state) {
   std::unordered_map<std::string, std::vector<Halide::Var>> loopArgMap;
+  std::unordered_map<std::string, bool> parallelizedMap;
   for (auto &f : pipeline.funcs) {
     spdlog::debug("- Scheduling function {}", f.name());
 
     /* ----------------- Cross-Stage Scheduling ----------------- */
 
-    auto &children = pipeline.children[f.name()];
-    // Schedule at root.
-    std::uniform_real_distribution<float> probDist(0.0f, 1.0f);
-    if (probDist(state.rng) < config.computeAtRootChance ||
-        children.size() != 1) {
-      f.compute_root();
-      spdlog::debug("Scheduled function {} compute at root", f.name());
-    } else {
-      auto &child = children[0];
-      auto &loopArgs = loopArgMap[child.name()];
-      std::string loopArgNames;
-      for (auto &arg : loopArgs) {
-        loopArgNames += arg.name() + " ";
-      }
-      spdlog::debug("Function {} has child {} with loop args {}", f.name(),
-                    child.name(), loopArgNames);
-      // Randomly pick a compute level.
-      std::uniform_int_distribution<int> levelDist(0, loopArgs.size() - 1);
-      int level = levelDist(state.rng);
-      f.compute_at(child, loopArgs[level]);
-      spdlog::debug("Scheduled function {} compute at {} - {}", f.name(),
-                    child.name(), loopArgs[level].name());
-      std::uniform_real_distribution<float> storeProbDist(0.0f, 1.0f);
-      // Randomly pick a storage level.
-      std::uniform_int_distribution<int> storeLevelDist(level,
-                                                        loopArgs.size() - 1);
-      int storeLevel = storeLevelDist(state.rng);
-      f.store_at(child, loopArgs[storeLevel]);
-      spdlog::debug("Scheduled function {} store at {} - {}", f.name(),
-                    child.name(), loopArgs[storeLevel].name());
-    }
+    auto parent = scheduleCrossStage(config, pipeline, f, loopArgMap,
+                                     parallelizedMap, state);
 
     /* ----------------- Intra-Stage Scheduling ----------------- */
 
     // Randomly split args.
     auto args = splitFunc(f, config.splitChance, state.rng);
-    // Shuffle the args for reordering.
-    std::shuffle(args.begin(), args.end(), state.rng);
-    std::vector<Halide::VarOrRVar> varArgs;
-    std::string argNames;
-    for (auto &arg : args) {
-      varArgs.push_back(arg);
-      argNames += arg.name() + " ";
+    // Shuffle/reorder and apply reorder call.
+    auto varArgs = reorderAndShuffleArgs(f, args, state.rng);
+    // Randomly vectorize innermost loop.
+    maybeVectorizeInnermost(f, args, config, state.rng);
+    // Randomly parallelize outermost loop.
+    if (!parent) {
+      bool parallelized = maybeParallelizeOutermost(f, args, config, state.rng);
+      parallelizedMap[f.name()] = parallelized;
+    } else {
+      parallelizedMap[f.name()] = parallelizedMap[*parent];
     }
-    f.reorder(varArgs);
-    spdlog::debug("Reordered function {} args to {}", f.name(), argNames);
 
     loopArgMap[f.name()] = args;
   }
