@@ -439,7 +439,7 @@ class ASTGraphVisitor(ASTVisitor):
 
         :param node: The variable node to visit.
         """
-        node_id = self._create_node("Variable", name=node.name)
+        node_id = self._create_node("Variable", variable=node.name)
         self.current_node_id = node_id
 
     def visit_intimm(self, node: IntImmNode):
@@ -463,7 +463,7 @@ class ASTGraphVisitor(ASTVisitor):
 
         :param node: The call node to visit.
         """
-        node_id = self._create_node("Call", name=node.name)
+        node_id = self._create_node("Call", function=node.name)
 
         # Visit all arguments
         self.node_stack.append(node_id)

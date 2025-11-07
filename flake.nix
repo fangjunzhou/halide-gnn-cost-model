@@ -33,6 +33,7 @@
                 # Python environment.
                 python3
                 uv
+                graphviz
               ];
 
               shellHook = ''
