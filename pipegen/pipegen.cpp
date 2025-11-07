@@ -1,13 +1,13 @@
 #include <Halide.h>
 #include <spdlog/spdlog.h>
 
+#include <nlohmann/json.hpp>
 #include <random>
 #include <unordered_map>
 #include <vector>
 
+#include "astvisitor.h"
 #include "pipegen.h"
-#include "astvisitor.h"           
-#include <nlohmann/json.hpp>
 
 Halide::Expr generateExpr(const std::vector<Halide::Var> &vars,
                           const std::vector<Halide::Func> &funcs, int depth,
@@ -93,7 +93,8 @@ Pipeline generatePipeline(const PipegenConfig &config, PipegenState &state) {
   // The output function is the last function created.
 
   Pipeline p(funcs.back());
-  // Attach the collected ASTs to the Pipeline so serializeAST can simply return them.
+  // Attach the collected ASTs to the Pipeline so serializeAST can simply return
+  // them.
   p.func_asts = std::move(ast_map);
   return p;
 }

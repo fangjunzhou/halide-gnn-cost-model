@@ -1,8 +1,12 @@
 #include <Halide.h>
 
-#include "pipeline.h"
+#include <nlohmann/json.hpp>
+#include <string>
+#include <utility>
+#include <vector>
 
-#include "astvisitor.h"
+#include "pipeline.h"
+#include "schedulervisitor.h"
 
 Pipeline::Pipeline(Halide::Func output) {
   this->output = output;
@@ -69,7 +73,8 @@ nlohmann::json Pipeline::serializeDAG() {
 }
 
 nlohmann::json Pipeline::serializeAST() {
-  // Return an array of functions with their name and the AST we collected during generation.
+  // Return an array of functions with their name and the AST we collected
+  // during generation.
   nlohmann::json root = nlohmann::json::array();
   for (auto &func : this->funcs) {
     nlohmann::json f;
@@ -83,6 +88,73 @@ nlohmann::json Pipeline::serializeAST() {
     root.push_back(f);
   }
   return root;
+}
+
+nlohmann::json Pipeline::serializeSchedule() {
+  // Do the first part of lowering:
+  std::vector<Halide::Internal::Function> output_funcs{this->output.function()};
+
+  // Create a deep-copy of the entire graph of Funcs.
+  auto [outputs, env] = Halide::Internal::deep_copy(
+      output_funcs, Halide::Internal::build_environment(output_funcs));
+
+  // Output functions should all be computed and stored at root.
+  for (const Halide::Internal::Function &f : outputs) {
+    Halide::Func(f).compute_root().store_root();
+  }
+
+  // Finalize all the LoopLevels
+  for (auto &iter : env) {
+    iter.second.lock_loop_levels();
+  }
+
+  // Substitute in wrapper Funcs
+  env = Halide::Internal::wrap_func_calls(env);
+
+  // Compute a realization order and determine group of functions which loops
+  // are to be fused together
+  auto [order, fused_groups] =
+      Halide::Internal::realization_order(outputs, env);
+
+  // Try to simplify the RHS/LHS of a function definition by propagating its
+  // specializations' conditions
+  Halide::Internal::simplify_specializations(env);
+
+  // For the purposes of printing the loop nest, we don't want to
+  // worry about which features are and aren't enabled.
+  Halide::Target target = Halide::get_host_target();
+  for (Halide::DeviceAPI api : Halide::all_device_apis) {
+    target.set_feature(
+        Halide::target_feature_for_device_api(Halide::DeviceAPI(api)));
+  }
+
+  bool any_memoized = false;
+  // Schedule the functions.
+  Halide::Internal::Stmt s = Halide::Internal::schedule_functions(
+      outputs, fused_groups, env, target, any_memoized);
+
+  // Compute the maximum and minimum possible value of each
+  // function. Used in later bounds inference passes.
+  Halide::Internal::FuncValueBounds func_bounds =
+      Halide::Internal::compute_function_value_bounds(order, env);
+
+  // This pass injects nested definitions of variable names, so we
+  // can't simplify statements from here until we fix them up. (We
+  // can still simplify Exprs).
+  s = Halide::Internal::bounds_inference(s, outputs, order, fused_groups, env,
+                                         func_bounds, target);
+  s = Halide::Internal::remove_extern_loops(s);
+  s = Halide::Internal::sliding_window(s, env);
+  s = Halide::Internal::simplify_correlated_differences(s);
+  s = Halide::Internal::allocation_bounds_inference(s, env, func_bounds);
+  s = Halide::Internal::remove_undef(s);
+  s = Halide::Internal::uniquify_variable_names(s);
+  s = Halide::Internal::simplify(s, false);
+
+  // Use public API only: print the loop nest and parse to nested JSON.
+  ScheduleJSONVisitor visitor(env);
+  s.accept(&visitor);
+  return visitor.result();
 }
 
 void Pipeline::topologicalSort() {

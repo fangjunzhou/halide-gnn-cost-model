@@ -61,17 +61,16 @@ class Pipeline {
   nlohmann::json serializeAST();
 
   /**
-   * @brief Serialize the loop nest schedule into a json object.
+   * @brief Serialize the scheduled loop-nest into a nested JSON object.
+   * Returns an array of nodes at the root.
    */
   nlohmann::json serializeSchedule();
 
-  /**
-   * @brief Store per-function JSON ASTs created at generation time.
-   * Key: function name -> value: JSON AST for that function (or null)
-   */
+  // Store per-function JSON ASTs created at generation time.
+  // Key: function name -> value: JSON AST for that function (or null)
   std::unordered_map<std::string, nlohmann::json> func_asts;
 
-  // TODO: Add scheudle serialization.
+  // TODO: Add schedule serialization.
 
  private:
   void topologicalSort();
