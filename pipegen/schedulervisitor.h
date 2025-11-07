@@ -9,7 +9,9 @@
 
 class ScheduleJSONVisitor : public Halide::Internal::IRVisitor {
  public:
-  ScheduleJSONVisitor() = default;
+  ScheduleJSONVisitor(
+      const std::map<std::string, Halide::Internal::Function> &e)
+      : env(e) {};
 
   // The final nested schedule: an array of nodes at the root (like
   // PrintLoopNest lines)
@@ -20,6 +22,9 @@ class ScheduleJSONVisitor : public Halide::Internal::IRVisitor {
 
   // Root is an array of nodes
   nlohmann::json root_ = nlohmann::json::array();
+
+  const std::map<std::string, Halide::Internal::Function> &env;
+  Halide::Internal::Scope<Halide::Expr> constants;
 
   // Stack of current node objects (pending their "body" being filled)
   std::vector<nlohmann::json> node_stack_;
@@ -152,46 +157,71 @@ class ScheduleJSONVisitor : public Halide::Internal::IRVisitor {
     nlohmann::json j;
     j["type"] = "For";
     j["var"] = simplify_var_name(op->name);
-    j["for_type"] = to_string(op->for_type);
-    j["device_api"] = to_string(op->device_api);
     // Bounds as strings (kept simple to avoid extra dependencies)
-    j["min"] = expr_to_string(op->min);
-    j["extent"] = expr_to_string(op->extent);
+    Halide::Expr min_val = op->min, extent_val = op->extent;
+    const Halide::Internal::Variable *min_var =
+        min_val.as<Halide::Internal::Variable>();
+    const Halide::Internal::Variable *extent_var =
+        extent_val.as<Halide::Internal::Variable>();
+    if (min_var) {
+      if (const Halide::Expr *e = constants.find(min_var->name)) {
+        min_val = *e;
+      }
+    }
 
+    if (extent_var) {
+      if (const Halide::Expr *e = constants.find(extent_var->name)) {
+        extent_val = *e;
+      }
+    }
+
+    if (extent_val.defined() && is_const(extent_val) && min_val.defined() &&
+        is_const(min_val)) {
+      Halide::Expr max_val = simplify(min_val + extent_val - 1);
+      j["min"] = expr_to_string(min_val);
+      j["max"] = expr_to_string(max_val);
+    }
     push_node(std::move(j));
     op->body.accept(this);
     pop_node();
   }
 
   void visit(const Halide::Internal::Realize *op) override {
-    nlohmann::json j;
-    j["type"] = "Realize";
-    j["func"] = simplify_func_name(op->name);
-
-    push_node(std::move(j));
-    op->body.accept(this);
-    pop_node();
+    // If the storage and compute levels for this function are
+    // distinct, print the store level too.
+    auto it = env.find(op->name);
+    if (it != env.end() && !(it->second.schedule().store_level() ==
+                             it->second.schedule().compute_level())) {
+      nlohmann::json j;
+      j["type"] = "Store";
+      j["func"] = simplify_func_name(op->name);
+      push_node(std::move(j));
+      op->body.accept(this);
+      pop_node();
+    } else {
+      op->body.accept(this);
+    }
   }
 
   void visit(const Halide::Internal::ProducerConsumer *op) override {
-    nlohmann::json j;
-    j["type"] = op->is_producer ? "Produce" : "Consume";
-    j["func"] = simplify_func_name(op->name);
-
-    push_node(std::move(j));
     op->body.accept(this);
-    pop_node();
   }
 
   void visit(const Halide::Internal::Provide *op) override {
     nlohmann::json j;
-    j["type"] = "Provide";
+    j["type"] = "Compute";
     j["func"] = simplify_func_name(op->name);
     emit_leaf(std::move(j));
   }
 
   void visit(const Halide::Internal::LetStmt *op) override {
     // Keep it simple: ignore Let bindings in the JSON, just traverse body.
-    op->body.accept(this);
+    if (is_const(op->value)) {
+      Halide::Internal::ScopedBinding<Halide::Expr> bind(constants, op->name,
+                                                         op->value);
+      op->body.accept(this);
+    } else {
+      op->body.accept(this);
+    }
   }
 };
