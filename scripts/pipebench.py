@@ -8,9 +8,13 @@ import subprocess
 from pathlib import Path
 import re
 import logging
+import shutil
 
 
 logger = logging.getLogger(__name__)
+
+
+BENCHMARK_TIMEOUT_SECONDS = 60
 
 
 def build_pipebench(pipelines_dir: Path | None = None, build_dir: Path | None = None):
@@ -64,9 +68,13 @@ def run_pipebench(benchmark_path: Path, output_path: Path) -> int:
     # Ensure output directory exists
     output_path.parent.mkdir(parents=True, exist_ok=True)
 
-    # Capture and stream output
+    # Capture and stream output. Enforce a timeout so long-running benchmarks
+    # are killed after 60 seconds. If timeout occurs, subprocess.run will
+    # raise subprocess.TimeoutExpired which will propagate to the caller.
     proc = subprocess.run(
-        [str(benchmark_path), f"--benchmark_out={str(output_path)}"], check=True
+        [str(benchmark_path), f"--benchmark_out={str(output_path)}"],
+        check=True,
+        timeout=BENCHMARK_TIMEOUT_SECONDS,
     )
     return proc.returncode
 
@@ -75,9 +83,8 @@ def benchmark_pipelines(pipelines_dir: Path, build_dir: Path | None = None) -> i
     """Benchmark all pipelines found in `pipelines_dir`.
 
     This function builds the pipebench binaries (in `build/bin`) and then for
-    each pipeline directory named `pipeline_<dag>_<sched>` it looks for an
-    executable named `pipebench_pipeline_<dag>_<sched>` in `build/bin` and
-    runs it, writing output to `pipelines/pipeline_<dag>_<sched>/benchmark.json`.
+    each pipeline directory it looks for an executable named `pipebench_<pipeline_name>`
+    in `build/bin` and runs it, writing output to `pipelines/<pipeline_name>/benchmark.json`.
 
     Returns 0 if all ran successfully, otherwise returns number of failures (>0).
     """
@@ -98,7 +105,7 @@ def benchmark_pipelines(pipelines_dir: Path, build_dir: Path | None = None) -> i
         return 0
 
     for entry in sorted(pipelines_dir.iterdir()):
-        if not entry.is_dir() or not entry.name.startswith("pipeline_"):
+        if not entry.is_dir():
             continue
 
         exe_name = f"pipebench_{entry.name}"
@@ -116,8 +123,49 @@ def benchmark_pipelines(pipelines_dir: Path, build_dir: Path | None = None) -> i
             if rc != 0:
                 logger.error("Benchmark %s exited with code %d", exe_path.name, rc)
                 failures += 1
+        except subprocess.TimeoutExpired as te:
+            # For timeouts we don't need a full exception stacktrace.
+            logger.error(
+                "Benchmark %s timed out after %ds",
+                exe_path.name,
+                BENCHMARK_TIMEOUT_SECONDS,
+            )
+            # Attempt to delete the pipeline directory (same conservative check)
+            try:
+                entry_resolved = entry.resolve()
+                pipelines_resolved = pipelines_dir.resolve()
+                if os.path.commonpath(
+                    [str(entry_resolved), str(pipelines_resolved)]
+                ) == str(pipelines_resolved):
+                    shutil.rmtree(entry)
+                    logger.info("Deleted pipeline directory %s due to timeout", entry)
+                else:
+                    logger.warning(
+                        "Refusing to delete %s: not inside %s", entry, pipelines_dir
+                    )
+            except Exception as del_err:
+                logger.exception("Failed to delete %s: %s", entry, del_err)
+            failures += 1
         except Exception as e:
             logger.exception("Failed to run %s: %s", exe_path, e)
+            # If a benchmark fails for other reasons, attempt to delete the
+            # pipeline directory to avoid future attempts. Be conservative and
+            # only delete if the entry is inside the provided pipelines_dir.
+            try:
+                entry_resolved = entry.resolve()
+                pipelines_resolved = pipelines_dir.resolve()
+                # Use commonpath to ensure entry is within pipelines_dir
+                if os.path.commonpath(
+                    [str(entry_resolved), str(pipelines_resolved)]
+                ) == str(pipelines_resolved):
+                    shutil.rmtree(entry)
+                    logger.info("Deleted pipeline directory %s due to failure", entry)
+                else:
+                    logger.warning(
+                        "Refusing to delete %s: not inside %s", entry, pipelines_dir
+                    )
+            except Exception as del_err:
+                logger.exception("Failed to delete %s: %s", entry, del_err)
             failures += 1
 
     return failures

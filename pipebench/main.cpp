@@ -4,9 +4,11 @@
 
 #include "pipeline.h"
 
-static void pipelineBenchmark(benchmark::State &state) {
+static void pipelineBenchmark(benchmark::State &state)
+{
   Halide::Runtime::Buffer<int> out(state.range(0), state.range(0));
-  for (auto _ : state) {
+  for (auto _ : state)
+  {
     output(out);
   }
 }
