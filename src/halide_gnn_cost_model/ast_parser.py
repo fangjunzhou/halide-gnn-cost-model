@@ -2,6 +2,8 @@ from __future__ import annotations
 from abc import ABC, abstractmethod
 from typing import List
 
+from torchtext.vocab import build_vocab_from_iterator
+
 
 class ASTVisitor:
     """Base class for AST visitors.
@@ -828,3 +830,25 @@ def parse_ast(ast_json_obj) -> List[RootNode]:
         root_nodes.append(RootNode(function_name, child_node))
 
     return root_nodes
+
+
+def build_ast_node_type_vocab():
+    """Build vocabulary for AST node types.
+
+    :return: A Vocab object mapping AST node types to indices.
+    """
+    node_types = [
+        "Root",
+        "Add",
+        "Sub",
+        "Mul",
+        "Div",
+        "Variable",
+        "IntImm",
+        "FloatImm",
+        "Call",
+        "Cast",
+        "Ramp",
+        "Broadcast",
+    ]
+    return build_vocab_from_iterator([node_types])

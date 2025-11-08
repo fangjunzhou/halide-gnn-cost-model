@@ -9,6 +9,7 @@ from abc import ABC, abstractmethod
 from typing import List
 
 import networkx as nx
+from torchtext.vocab import build_vocab_from_iterator
 
 
 class ScheduleVisitor:
@@ -528,3 +529,19 @@ def parse_schedule(schedule_json_obj) -> ScheduleRoot:
         root_nodes.append(parse_node(node_dict))
 
     return ScheduleRoot(root_nodes)
+
+
+def build_schedule_node_type_vocab():
+    """Build vocabulary for schedule node types.
+
+    :return: A Vocab object mapping schedule node types to indices.
+    """
+    node_types = [
+        "Root",
+        "SerialFor",
+        "ParallelFor",
+        "VectorizedFor",
+        "Compute",
+        "Store",
+    ]
+    return build_vocab_from_iterator([node_types])
