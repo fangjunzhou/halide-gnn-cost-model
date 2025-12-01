@@ -1,15 +1,34 @@
 Bootstrap: docker
 From: debian:latest
 
+%files
+    ./pipebench /workspace/pipebench
+    ./pipegen /workspace/pipegen
+    ./scripts /workspace/scripts
+    ./src /workspace/src
+    ./CMakeLists.txt /workspace/CMakeLists.txt
+    ./pyproject.toml /workspace/pyproject.toml
+    ./uv.lock /workspace/uv.lock
+    ./README.md /workspace/README.md
+
 %post
     apt-get -y update
     # Install build tools
-    apt-get -y install build-essential cmake git
+    apt-get -y install build-essential cmake git curl
     # Install project dependencies
     apt-get -y install libhalide19-dev libspdlog-dev libargparse-dev libbenchmark-dev nlohmann-json3-dev
     # Install python3 and pip
     apt-get -y install python3 python3-pip
+    # Install uv
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+    # Setup uv environment
+    cd /workspace
+    rm -rf .venv
+    /root/.local/bin/uv sync
+
+%environment
+    export PATH="/root/.local/bin/:$PATH"
 
 %runscript
     cd /workspace
-    python3 scripts/main.py $*
+    .venv/bin/python3 scripts/main.py $*
