@@ -101,7 +101,7 @@ def load_pipeline(pipeline_dir: Path, ast_vocab=None, sched_vocab=None) -> Heter
     dag_path = pipeline_dir / "dag.json"
     dag = load_dag(dag_path)
     data["function"].x = torch.ones((len(dag.nodes), 1), dtype=torch.float)
-    edge_index = torch.tensor(list(dag.edges)).T
+    edge_index = torch.tensor(list(dag.edges), dtype=torch.int64).T.contiguous()
     data["function", "called_by", "function"].edge_index = edge_index
 
     # Create function name to DAG node ID mapping
@@ -124,7 +124,9 @@ def load_pipeline(pipeline_dir: Path, ast_vocab=None, sched_vocab=None) -> Heter
 
     # Add AST node-to-node edges
     if list(ast_graph.edges):
-        edge_index = torch.tensor(list(ast_graph.edges)).T.contiguous()
+        edge_index = torch.tensor(
+            list(ast_graph.edges), dtype=torch.int64
+        ).T.contiguous()
         data["ast_node", "child_of", "ast_node"].edge_index = edge_index
 
     # Connect AST to corresponding function nodes
@@ -137,7 +139,7 @@ def load_pipeline(pipeline_dir: Path, ast_vocab=None, sched_vocab=None) -> Heter
             func_idx = func_name_to_id[func_name]
             ast_to_func_edges.append((ast_node_idx, func_idx))
     if ast_to_func_edges:
-        edge_index = torch.tensor(ast_to_func_edges).T.contiguous()
+        edge_index = torch.tensor(ast_to_func_edges, dtype=torch.int64).T.contiguous()
         data["ast_node", "is_expr_of", "function"].edge_index = edge_index
 
     # ---------------- Schedule/Loop Level Nodes  ---------------- #
@@ -154,7 +156,9 @@ def load_pipeline(pipeline_dir: Path, ast_vocab=None, sched_vocab=None) -> Heter
 
     # Add loop level-to-loop level edges
     if list(schedule_graph.edges):
-        edge_index = torch.tensor(list(schedule_graph.edges)).T.contiguous()
+        edge_index = torch.tensor(
+            list(schedule_graph.edges), dtype=torch.int64
+        ).T.contiguous()
         data["loop_level", "child_of", "loop_level"].edge_index = edge_index
 
     # Create function to schedule loop level mapping
@@ -175,7 +179,7 @@ def load_pipeline(pipeline_dir: Path, ast_vocab=None, sched_vocab=None) -> Heter
             for sched_node_idx in func_to_loop_levels[func_name]:
                 func_to_sched_edges.append((func_idx, sched_node_idx))
     if func_to_sched_edges:
-        edge_index = torch.tensor(func_to_sched_edges).T.contiguous()
+        edge_index = torch.tensor(func_to_sched_edges, dtype=torch.int64).T.contiguous()
         data["function", "schedule_at", "loop_level"].edge_index = edge_index
 
     # --------------------- Benchmark Label  --------------------- #
