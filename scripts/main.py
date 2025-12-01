@@ -10,6 +10,7 @@ import sys
 
 import pipegen
 import pipebench
+import pipepreprocess
 
 
 logger = logging.getLogger(__name__)
@@ -76,6 +77,21 @@ def main():
     except Exception:
         logger.exception("Failed to run benchmarks")
         sys.exit(1)
+
+    logger.info("Preprocessing pipelines in %s", pipelines_dir)
+    try:
+        processed, skipped = pipepreprocess.preprocess_pipelines(
+            pipelines_dir, force=True
+        )
+    except Exception:
+        logger.exception("Failed to preprocess pipelines")
+        sys.exit(1)
+
+    logger.info(
+        "Pipeline preprocessing complete (processed=%d, skipped=%d)",
+        processed,
+        skipped,
+    )
 
     if failures:
         logger.error("Completed with %d failures", failures)

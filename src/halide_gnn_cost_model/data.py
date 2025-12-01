@@ -3,12 +3,18 @@ PyTorch Dataset and DataLoader for pipeline DAGs.
 """
 
 import logging
+import json
+from pathlib import Path
+
+import networkx as nx
 import torch
 from torch.utils.data import Dataset
-from pathlib import Path
-import networkx as nx
-import json
 from torch_geometric.data import HeteroData
+
+try:
+    from torch.serialization import add_safe_globals
+except ImportError:  # pragma: no cover - PyTorch < 2.6
+    add_safe_globals = None
 
 from halide_gnn_cost_model.ast_parser import (
     parse_ast,
@@ -23,6 +29,25 @@ from halide_gnn_cost_model.schedule_parser import (
 
 
 logger = logging.getLogger(__name__)
+
+
+if add_safe_globals is not None:
+    try:  # Allowlist PyG storage classes when using weights_only=True
+        from torch_geometric.data.storage import (
+            BaseStorage,
+            EdgeStorage,
+            GlobalStorage,
+            NodeStorage,
+        )
+
+        add_safe_globals(
+            [BaseStorage, EdgeStorage, GlobalStorage, NodeStorage, HeteroData]
+        )
+    except Exception as exc:  # pragma: no cover - best-effort registration
+        logger.debug("Unable to register PyG storage classes for safe loading: %s", exc)
+
+
+PREPROCESSED_FILENAME = "graph_data.pt"
 
 
 def load_dag(dag_path: Path) -> nx.DiGraph:
@@ -204,7 +229,20 @@ class PipelineDataset(Dataset):
                 f"Dataset directory {dataset_dir} does not exist or is not a directory."
             )
         # Get all the pipeline directories
-        self.pipeline_dirs = [d for d in dataset_dir.iterdir() if d.is_dir()]
+        self.pipeline_dirs = sorted(
+            [d for d in dataset_dir.iterdir() if d.is_dir()], key=lambda p: p.name
+        )
+
+        # Ensure preprocessed data is available for every pipeline directory.
+        missing_preprocessed = [
+            d for d in self.pipeline_dirs if not (d / PREPROCESSED_FILENAME).exists()
+        ]
+        if missing_preprocessed:
+            missing_names = ", ".join(d.name for d in missing_preprocessed)
+            raise FileNotFoundError(
+                "Preprocessed graph data not found for pipelines: "
+                f"{missing_names}. Please run pipepreprocess first."
+            )
 
         # Build vocabs if not provided
         self.ast_vocab = (
@@ -219,5 +257,14 @@ class PipelineDataset(Dataset):
 
     def __getitem__(self, idx: int) -> HeteroData:
         pipeline_dir = self.pipeline_dirs[idx]
-        data = load_pipeline(pipeline_dir, self.ast_vocab, self.sched_vocab)
+        preprocessed_path = pipeline_dir / PREPROCESSED_FILENAME
+        load_kwargs = {"map_location": "cpu"}
+        try:
+            # Files are produced locally via `pipepreprocess`, so allowing full
+            # object deserialization is acceptable here.
+            data: HeteroData = torch.load(
+                preprocessed_path, weights_only=False, **load_kwargs
+            )
+        except TypeError:  # pragma: no cover - PyTorch < 2.6
+            data = torch.load(preprocessed_path, **load_kwargs)
         return data
