@@ -5,6 +5,7 @@ description = "Add your description here"
 readme = "README.md"
 requires-python = ">=3.13"
 dependencies = [
+    "ipywidgets>=8.1.8",
     "matplotlib>=3.10.7",
     "networkx>=3.5",
     "pydot>=4.0.1",
@@ -12,6 +13,7 @@ dependencies = [
     "torch-geometric>=2.7.0",
     "torchtext>=0.6.0",
     "torchvision>=0.24.0",
+    "tqdm>=4.67.1",
 ]
 
 [dependency-groups]
@@ -19,6 +21,7 @@ dev = [
     "black>=25.9.0",
     "halide-gnn-cost-model",
     "jupyterlab>=4.4.10",
+    "pip>=25.3",
 ]
 
 [build-system]
