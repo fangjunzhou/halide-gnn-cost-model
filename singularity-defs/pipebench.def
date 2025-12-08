@@ -31,4 +31,4 @@ From: debian:latest
 
 %runscript
     cd /workspace
-    .venv/bin/python3 scripts/main.py $*
+    .venv/bin/python3 scripts/pipeline-dataset/main.py $*
