@@ -1,0 +1,56 @@
+Bootstrap: docker
+From: nvcr.io/hpc/namd:3.0.1
+
+%files
+    ./src /workspace/src
+    ./pyproject.toml /workspace/pyproject.toml
+    ./uv.lock /workspace/uv.lock
+    ./README.md /workspace/README.md
+
+%post
+    set -eux
+
+    apt-get -y update
+    apt-get -y install curl graphviz nvtop
+
+    # Install uv
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    # Let uv manage its own Python installation
+    export PATH="/root/.local/bin:$PATH"
+    export UV_PYTHON_INSTALL_DIR=/opt/uv/python
+    mkdir -p /opt/uv/python
+
+    # Make sure workspace exists for the project
+    mkdir -p /workspace
+    cd /workspace
+
+    # Install the Python version that matches `requires-python = ">=3.13"`
+    uv python install 3.13
+
+    # (Re)create and sync the project environment.
+    # `--group dev` ensures JupyterLab and other dev deps are installed.
+    rm -rf .venv
+    uv sync --frozen --group dev
+
+    # Make the env world-readable so Singularity user can use it
+    chmod -R a+rX /workspace/.venv
+
+%environment
+    # Make uv & the project venv available at runtime
+    export PATH="/workspace/.venv/bin:/root/.local/bin:$PATH"
+    export UV_PYTHON_INSTALL_DIR=/opt/uv/python
+
+    # Optional: defaults for Jupyter if you want to auto-start it
+    export JUPYTER_TOKEN=cs224w
+    export JUPYTER_PORT=8888
+    export JUPYTER_DIR=/workspace
+
+%runscript
+    jupyter lab \
+        --ip=localhost \
+        --no-browser \
+        --port="${JUPYTER_PORT:-8888}" \
+        --NotebookApp.token="${JUPYTER_TOKEN:-}" \
+        --NotebookApp.password='' \
+        --NotebookApp.allow_origin='*'
