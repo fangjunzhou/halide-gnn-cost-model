@@ -33,7 +33,20 @@
                 # Python environment.
                 python3
                 uv
+                graphviz
               ];
+
+              shellHook = ''
+                # Create the virtual environment if it doesn't exist
+                if [ -d .venv ]; then
+                  # Activate the virtual environment
+                  source .venv/bin/activate
+                  # Add .venv/bin to PATH
+                  export PATH=$PWD/.venv/bin:$PATH
+                else
+                  echo "Environment not initialized."
+                fi
+              '';
             };
         }
       );

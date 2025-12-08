@@ -3,7 +3,6 @@
 
 #include <nlohmann/json.hpp>
 #include <sstream>
-#include <stack>
 #include <string>
 #include <vector>
 
@@ -156,6 +155,7 @@ class ScheduleJSONVisitor : public Halide::Internal::IRVisitor {
   void visit(const Halide::Internal::For *op) override {
     nlohmann::json j;
     j["type"] = "For";
+    j["for_type"] = to_string(op->for_type);
     j["var"] = simplify_var_name(op->name);
     // Bounds as strings (kept simple to avoid extra dependencies)
     Halide::Expr min_val = op->min, extent_val = op->extent;
@@ -194,7 +194,7 @@ class ScheduleJSONVisitor : public Halide::Internal::IRVisitor {
                              it->second.schedule().compute_level())) {
       nlohmann::json j;
       j["type"] = "Store";
-      j["func"] = simplify_func_name(op->name);
+      j["func"] = op->name;
       push_node(std::move(j));
       op->body.accept(this);
       pop_node();
@@ -210,7 +210,7 @@ class ScheduleJSONVisitor : public Halide::Internal::IRVisitor {
   void visit(const Halide::Internal::Provide *op) override {
     nlohmann::json j;
     j["type"] = "Compute";
-    j["func"] = simplify_func_name(op->name);
+    j["func"] = op->name;
     emit_leaf(std::move(j));
   }
 
