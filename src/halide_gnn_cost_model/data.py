@@ -249,7 +249,13 @@ def load_pipeline(pipeline_dir: Path, ast_vocab=None, sched_vocab=None) -> Heter
 
 
 class PipelineDataset(Dataset):
-    def __init__(self, dataset_dir: Path, ast_vocab=None, sched_vocab=None) -> None:
+    def __init__(
+        self,
+        dataset_dir: Path,
+        ast_vocab=None,
+        sched_vocab=None,
+        preload: bool = True,
+    ) -> None:
         super().__init__()
         # Check if the directory exists
         if not dataset_dir.exists() or not dataset_dir.is_dir():
@@ -280,12 +286,28 @@ class PipelineDataset(Dataset):
             sched_vocab if sched_vocab is not None else build_schedule_node_type_vocab()
         )
 
+        self.preload = preload
+        self._data_cache = None
+        if self.preload:
+            # Eagerly load all preprocessed graphs to avoid repeated disk reads.
+            self._data_cache = [
+                self._load_preprocessed(d / PREPROCESSED_FILENAME)
+                for d in self.pipeline_dirs
+            ]
+
     def __len__(self) -> int:
         return len(self.pipeline_dirs)
 
     def __getitem__(self, idx: int) -> HeteroData:
+        if self.preload and self._data_cache is not None:
+            return self._data_cache[idx]
+
         pipeline_dir = self.pipeline_dirs[idx]
         preprocessed_path = pipeline_dir / PREPROCESSED_FILENAME
+        return self._load_preprocessed(preprocessed_path)
+
+    @staticmethod
+    def _load_preprocessed(preprocessed_path: Path) -> HeteroData:
         load_kwargs = {"map_location": "cpu"}
         try:
             # Files are produced locally via `pipepreprocess`, so allowing full
