@@ -12,7 +12,7 @@ rm -rf /var/tmp/piplines-job${SLURM_ARRAY_TASK_ID}
 rm -rf /var/tmp/build-job${SLURM_ARRAY_TASK_ID}
 rm $RESOURCE_PATH/pipeline-job-artifacts/piplines-job${SLURM_ARRAY_TASK_ID}.tar
 
-srun apptainer run -B.:/workspace $RESOURCE_PATH/simgs/pipebench.simg \
+srun apptainer run -B.:/workspace $RESOURCE_PATH/simgs/pipeline-dataset.simg \
     --pipeline-id ${SLURM_ARRAY_TASK_ID} \
     --num-schedules 128 \
     --pipelines-dir /var/tmp/piplines-job${SLURM_ARRAY_TASK_ID} \
