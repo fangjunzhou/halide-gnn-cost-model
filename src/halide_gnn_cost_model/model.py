@@ -122,10 +122,11 @@ class PipelineModel(nn.Module):
     def __init__(
         self,
         gnn: nn.Module,
-        out_channels: int,
+        feat_channels: int,
         num_runtime_targets: int,
         ast_vocab_size: int,
         sched_vocab_size: int,
+        hidden_channels: int = 32,
         ast_embedding_dim: int = 32,
         sched_embedding_dim: int = 32,
         function_embedding_dim: int = 32,
@@ -141,7 +142,9 @@ class PipelineModel(nn.Module):
         self.ast_embedding = nn.Embedding(ast_vocab_size, ast_embedding_dim)
         self.sched_embedding = nn.Embedding(sched_vocab_size, sched_embedding_dim)
         self.function_embedding = nn.Parameter(torch.empty(function_embedding_dim))
-        self.pipeline_lin = nn.Linear(out_channels, num_runtime_targets)
+        self.fc1 = nn.Linear(feat_channels, hidden_channels)
+        self.fc2 = nn.Linear(hidden_channels, hidden_channels)
+        self.fc3 = nn.Linear(hidden_channels, num_runtime_targets)
 
         self.reset_parameters()
 
@@ -149,9 +152,15 @@ class PipelineModel(nn.Module):
         nn.init.xavier_uniform_(self.ast_embedding.weight)
         nn.init.xavier_uniform_(self.sched_embedding.weight)
         nn.init.normal_(self.function_embedding, mean=0.0, std=0.02)
-        nn.init.xavier_uniform_(self.pipeline_lin.weight)
-        if self.pipeline_lin.bias is not None:
-            nn.init.zeros_(self.pipeline_lin.bias)
+        nn.init.xavier_uniform_(self.fc1.weight)
+        if self.fc1.bias is not None:
+            nn.init.zeros_(self.fc1.bias)
+        nn.init.xavier_uniform_(self.fc2.weight)
+        if self.fc2.bias is not None:
+            nn.init.zeros_(self.fc2.bias)
+        nn.init.xavier_uniform_(self.fc3.weight)
+        if self.fc3.bias is not None:
+            nn.init.zeros_(self.fc3.bias)
         if hasattr(self.function_gnn, "reset_parameters"):
             self.function_gnn.reset_parameters()
 
@@ -186,7 +195,11 @@ class PipelineModel(nn.Module):
                 pipeline_feat, p=self.dropout, training=self.training
             )
 
-        log_runtime = self.pipeline_lin(pipeline_feat)
+        x = F.relu(self.fc1(pipeline_feat))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.relu(self.fc2(x))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        log_runtime = self.fc3(x)
         return log_runtime
 
     @staticmethod
