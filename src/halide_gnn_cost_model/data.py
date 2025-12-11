@@ -450,7 +450,7 @@ class PipelineDataset(Dataset):
 
     def __getitem__(self, idx: int) -> HeteroData:
         if self.preload and self._data_cache is not None:
-            return self._data_cache[idx]
+            return self._data_cache[idx].clone()
 
         pipeline_dir = self.pipeline_dirs[idx]
         preprocessed_path = pipeline_dir / PREPROCESSED_FILENAME
