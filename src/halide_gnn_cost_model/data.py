@@ -52,6 +52,7 @@ if add_safe_globals is not None:
 
 
 PREPROCESSED_FILENAME = "graph_data.pt"
+TRANSFORMER_PREPROCESSED_FILENAME = "graph_transformer_data.pt"
 
 _AST_VOCAB_SIZE: Optional[int] = None
 _SCHED_VOCAB_SIZE: Optional[int] = None
@@ -435,7 +436,7 @@ class PipelineDataset(Dataset):
 
         self.preload = preload
         self.preprocessor = preprocessor
-        self._data_cache = None
+        self._data_cache: Optional[list[Data | HeteroData]] = None
         if self.preload:
             # Eagerly load all preprocessed graphs to avoid repeated disk reads.
             self._data_cache = [
@@ -448,7 +449,7 @@ class PipelineDataset(Dataset):
     def __len__(self) -> int:
         return len(self.pipeline_dirs)
 
-    def __getitem__(self, idx: int) -> HeteroData:
+    def __getitem__(self, idx: int) -> Data | HeteroData:
         if self.preload and self._data_cache is not None:
             return self._data_cache[idx].clone()
 
@@ -478,3 +479,80 @@ class PipelineDataset(Dataset):
         if processed is None:
             raise ValueError("Preprocessor must return a processed graph instance")
         return processed
+
+
+class PipelineDatasetTransformer(Dataset):
+    """Dataset wrapper that reads transformer-preprocessed pipeline graphs.
+
+    Graphs are expected to be serialized ``torch_geometric.data.Data`` objects
+    created via ``graph_transformer_preprocessor`` and stored alongside the
+    original pipeline directories.
+    """
+
+    def __init__(
+        self,
+        dataset_dir: Path,
+        *,
+        preload: bool = True,
+        map_location: torch.device | str = "cpu",
+    ) -> None:
+        super().__init__()
+
+        if not dataset_dir.exists() or not dataset_dir.is_dir():
+            raise ValueError(
+                f"Dataset directory {dataset_dir} does not exist or is not a directory."
+            )
+
+        self.dataset_dir = dataset_dir
+        self.pipeline_dirs = sorted(
+            [d for d in dataset_dir.iterdir() if d.is_dir()], key=lambda p: p.name
+        )
+
+        if not self.pipeline_dirs:
+            raise ValueError(f"No pipeline directories found in {dataset_dir}.")
+
+        missing = [
+            d
+            for d in self.pipeline_dirs
+            if not (d / TRANSFORMER_PREPROCESSED_FILENAME).exists()
+        ]
+        if missing:
+            missing_str = ", ".join(d.name for d in missing)
+            raise FileNotFoundError(
+                "Transformer-preprocessed graphs missing for pipelines: "
+                f"{missing_str}. Run transformer_preprocess.py first."
+            )
+
+        self.preload = preload
+        self.map_location = map_location
+        self._data_cache: Optional[list[Data]] = None
+        if self.preload:
+            self._data_cache = [
+                self._load_preprocessed(d / TRANSFORMER_PREPROCESSED_FILENAME)
+                for d in self.pipeline_dirs
+            ]
+
+    def __len__(self) -> int:
+        return len(self.pipeline_dirs)
+
+    def __getitem__(self, idx: int) -> Data:
+        if self.preload and self._data_cache is not None:
+            return self._data_cache[idx].clone()
+
+        pipeline_dir = self.pipeline_dirs[idx]
+        preprocessed_path = pipeline_dir / TRANSFORMER_PREPROCESSED_FILENAME
+        return self._load_preprocessed(preprocessed_path).clone()
+
+    def _load_preprocessed(self, preprocessed_path: Path) -> Data:
+        load_kwargs = {"map_location": self.map_location}
+        try:
+            data = torch.load(preprocessed_path, weights_only=False, **load_kwargs)
+        except TypeError:  # pragma: no cover - PyTorch < 2.6 fallback
+            data = torch.load(preprocessed_path, **load_kwargs)
+
+        if not isinstance(data, Data):
+            raise TypeError(
+                f"Expected transformer-preprocessed file {preprocessed_path} to contain a Data object, "
+                f"got {type(data).__name__}."
+            )
+        return data
