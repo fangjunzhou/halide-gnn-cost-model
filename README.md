@@ -1,5 +1,9 @@
 # Halide GNN Cost Model
 
+## Dataset
+
+We release our `pipelines-16k` and `pipelines-32k` datasets along with the test dataset used in this project [here](https://drive.google.com/drive/folders/1U6RxXkfPjc7P0eOlQXgSQxFgzAeoqfOG?usp=sharing).
+
 ## Halide Pipeline Generation
 
 This project contains tools to (1) generate Halide pipelines with randomized DAGs and schedules (`pipegen`) and (2) run micro-benchmarks against compiled pipelines (`pipebench`). The typical workflow is:
