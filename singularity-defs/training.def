@@ -1,0 +1,24 @@
+Bootstrap: docker
+From: nvcr.io/hpc/namd:3.0.1
+
+%post
+    set -eux
+
+    apt-get -y update
+    apt-get -y install curl graphviz nvtop
+
+    # Install uv
+    curl -LsSf https://astral.sh/uv/install.sh | sh
+
+    # Let uv manage its own Python installation
+    export PATH="/root/.local/bin:$PATH"
+    export UV_PYTHON_INSTALL_DIR=/opt/uv/python
+    mkdir -p /opt/uv/python
+
+%environment
+    # Make uv & the project venv available at runtime
+    export PATH="/workspace/.venv/bin:/root/.local/bin:$PATH"
+    export UV_PYTHON_INSTALL_DIR=/opt/uv/python
+
+%runscript
+    /workspace/.venv/bin/python3 $*

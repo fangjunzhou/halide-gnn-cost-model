@@ -2,13 +2,13 @@
 
 from __future__ import annotations
 
-from typing import Any, Optional
+from typing import Any, Dict, Optional
 
 import torch
 from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
-from torch_geometric.nn import GATConv, SAGEConv
+from torch_geometric.nn import GATConv, GPSConv, SAGEConv
 
 try:  # PyG optional dependency when running type checkers.
     from torch_geometric.data import HeteroData
@@ -16,7 +16,7 @@ except ImportError:  # pragma: no cover - allows documentation builds without Py
     HeteroData = object  # type: ignore
 
 
-__all__ = ["PipeGCN", "PipeGAT", "PipelineModel"]
+__all__ = ["PipeGCN", "PipeGAT", "PipeGPS", "PipelineModel"]
 
 
 class PipeGCN(nn.Module):
@@ -116,16 +116,133 @@ class PipeGAT(nn.Module):
         return x
 
 
+class PipeGPS(nn.Module):
+    """Graph transformer-style encoder built with GPSConv blocks."""
+
+    def __init__(
+        self,
+        hidden_channels: int,
+        num_layers: int,
+        num_attn_heads: int,
+        vocab_size: int,
+        num_runtime_targets: int,
+        pe_dim: int = 24,
+        attn_type: str = "multihead",
+        attn_kwargs: Optional[Dict[str, Any]] = None,
+        schedule_node_type: int = 2,
+        dropout: float = 0.5,
+    ) -> None:
+        super().__init__()
+        if num_layers < 1:
+            raise ValueError("PipeGPS requires at least one GPSConv layer.")
+        if hidden_channels <= pe_dim:
+            raise ValueError("hidden_channels must exceed pe_dim for feature fusion.")
+
+        self.pe_dim = pe_dim
+        self.dropout = dropout
+        self.schedule_node_type = schedule_node_type
+
+        node_embedding_dim = hidden_channels - pe_dim
+        self.node_emb = nn.Embedding(vocab_size, node_embedding_dim)
+        self.pe_lin = nn.Linear(pe_dim, pe_dim)
+        self.pe_norm = nn.BatchNorm1d(pe_dim)
+
+        attn_kwargs = attn_kwargs or {}
+        self.convs = nn.ModuleList()
+        for _ in range(num_layers):
+            self.convs.append(
+                GPSConv(
+                    hidden_channels,
+                    None,
+                    heads=num_attn_heads,
+                    attn_type=attn_type,
+                    attn_kwargs=attn_kwargs,
+                )
+            )
+
+        self.fc1 = nn.Linear(hidden_channels, hidden_channels)
+        self.fc2 = nn.Linear(hidden_channels, hidden_channels)
+        self.fc3 = nn.Linear(hidden_channels, num_runtime_targets)
+
+        self.reset_parameters()
+
+    def reset_parameters(self) -> None:
+        nn.init.xavier_uniform_(self.node_emb.weight)
+        nn.init.xavier_uniform_(self.pe_lin.weight)
+        if self.pe_lin.bias is not None:
+            nn.init.zeros_(self.pe_lin.bias)
+        self.pe_norm.reset_parameters()
+        for conv in self.convs:
+            conv.reset_parameters()
+        nn.init.xavier_uniform_(self.fc1.weight)
+        if self.fc1.bias is not None:
+            nn.init.zeros_(self.fc1.bias)
+        nn.init.xavier_uniform_(self.fc2.weight)
+        if self.fc2.bias is not None:
+            nn.init.zeros_(self.fc2.bias)
+        nn.init.xavier_uniform_(self.fc3.weight)
+        if self.fc3.bias is not None:
+            nn.init.zeros_(self.fc3.bias)
+
+    def forward(
+        self,
+        node_tokens: Tensor,
+        positional_encoding: Tensor,
+        node_type: Tensor,
+        edge_index: Tensor,
+        batch: Optional[Tensor] = None,
+    ) -> Tensor:
+        node_tokens = node_tokens.view(-1).long()
+        positional_encoding = positional_encoding.view(-1, self.pe_dim)
+        node_type = node_type.view(-1)
+
+        x_pe = self.pe_norm(positional_encoding)
+        x = torch.cat((self.node_emb(node_tokens), self.pe_lin(x_pe)), dim=1)
+
+        for conv in self.convs:
+            x = conv(x, edge_index, batch=batch)
+
+        schedule_mask = node_type.eq(self.schedule_node_type)
+
+        if schedule_mask.any():
+            x = x[schedule_mask]
+            if batch is not None:
+                batch = batch.view(-1)[schedule_mask]
+                num_graphs = int(batch.max().item()) + 1 if batch.numel() > 0 else 1
+                pooled = x.new_zeros((num_graphs, x.size(-1)))
+                pooled.index_add_(0, batch, x)
+                x = pooled
+            else:
+                x = x.sum(dim=0, keepdim=True)
+        else:
+            num_graphs = (
+                int(batch.max().item()) + 1
+                if batch is not None and batch.numel() > 0
+                else 1
+            )
+            x = x.new_zeros((num_graphs, x.size(-1)))
+
+        x = F.relu(self.fc1(x))
+        if self.dropout > 0:
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.relu(self.fc2(x))
+        if self.dropout > 0:
+            x = F.dropout(x, p=self.dropout, training=self.training)
+        x = self.fc3(x)
+        return x
+
+
 class PipelineModel(nn.Module):
     """Predicts runtime from Halide pipeline graphs using a node encoder."""
 
     def __init__(
         self,
         gnn: nn.Module,
-        out_channels: int,
+        feat_channels: int,
         num_runtime_targets: int,
         ast_vocab_size: int,
         sched_vocab_size: int,
+        hidden_channels: int = 32,
         ast_embedding_dim: int = 32,
         sched_embedding_dim: int = 32,
         function_embedding_dim: int = 32,
@@ -141,7 +258,9 @@ class PipelineModel(nn.Module):
         self.ast_embedding = nn.Embedding(ast_vocab_size, ast_embedding_dim)
         self.sched_embedding = nn.Embedding(sched_vocab_size, sched_embedding_dim)
         self.function_embedding = nn.Parameter(torch.empty(function_embedding_dim))
-        self.pipeline_lin = nn.Linear(out_channels, num_runtime_targets)
+        self.fc1 = nn.Linear(feat_channels, hidden_channels)
+        self.fc2 = nn.Linear(hidden_channels, hidden_channels)
+        self.fc3 = nn.Linear(hidden_channels, num_runtime_targets)
 
         self.reset_parameters()
 
@@ -149,9 +268,15 @@ class PipelineModel(nn.Module):
         nn.init.xavier_uniform_(self.ast_embedding.weight)
         nn.init.xavier_uniform_(self.sched_embedding.weight)
         nn.init.normal_(self.function_embedding, mean=0.0, std=0.02)
-        nn.init.xavier_uniform_(self.pipeline_lin.weight)
-        if self.pipeline_lin.bias is not None:
-            nn.init.zeros_(self.pipeline_lin.bias)
+        nn.init.xavier_uniform_(self.fc1.weight)
+        if self.fc1.bias is not None:
+            nn.init.zeros_(self.fc1.bias)
+        nn.init.xavier_uniform_(self.fc2.weight)
+        if self.fc2.bias is not None:
+            nn.init.zeros_(self.fc2.bias)
+        nn.init.xavier_uniform_(self.fc3.weight)
+        if self.fc3.bias is not None:
+            nn.init.zeros_(self.fc3.bias)
         if hasattr(self.function_gnn, "reset_parameters"):
             self.function_gnn.reset_parameters()
 
@@ -186,7 +311,11 @@ class PipelineModel(nn.Module):
                 pipeline_feat, p=self.dropout, training=self.training
             )
 
-        log_runtime = self.pipeline_lin(pipeline_feat)
+        x = F.relu(self.fc1(pipeline_feat))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        x = F.relu(self.fc2(x))
+        x = F.dropout(x, p=self.dropout, training=self.training)
+        log_runtime = self.fc3(x)
         return log_runtime
 
     @staticmethod
